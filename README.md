@@ -1,448 +1,597 @@
-# 🏆 HDB Resale Price Prediction — Kaggle #1 Solution
+# 🏠 HDB Resale Price Prediction — Full Competition Journey
 
-> **Final Leaderboard Score: 21,615.51 (RMSE) — 1st Place**  
-> Competition: Regression Challenge (HDB Resale Price Prediction)  
-> Model: CatBoost with native categorical encoding, 5-fold cross-validation
+> **Competition**: Regression Challenge (HDB Resale Price Prediction)  
+> **Metric**: RMSE (Root Mean Squared Error) — lower is better  
+> **Team**: TEAM 2  
+> **Best Score**: 21,471.62 (2nd place on public leaderboard)  
+> **Model**: CatBoost ensemble with native categorical encoding
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Project Overview](#project-overview)
-2. [Dataset](#dataset)
-3. [Repository Structure](#repository-structure)
-4. [The Full Journey — What We Tried](#the-full-journey)
-5. [Feature Engineering](#feature-engineering)
-6. [Feature Selection Process](#feature-selection-process)
-7. [Model Evolution](#model-evolution)
-8. [Why CatBoost Won](#why-catboost-won)
-9. [Hyperparameters](#hyperparameters)
-10. [Key Lessons Learned](#key-lessons-learned)
+1. [What We Were Trying to Do](#what-we-were-trying-to-do)
+2. [The Dataset](#the-dataset)
+3. [Our Journey — Version by Version](#our-journey)
+4. [Key Turning Points](#key-turning-points)
+5. [Feature Engineering Deep Dive](#feature-engineering-deep-dive)
+6. [Why CatBoost Beat Everything Else](#why-catboost-beat-everything-else)
+7. [Challenges and How We Managed Them](#challenges-and-how-we-managed-them)
+8. [Model Limitations](#model-limitations)
+9. [Key Learnings](#key-learnings)
+10. [What We Would Do With No Constraints](#what-we-would-do-with-no-constraints)
 11. [How to Reproduce](#how-to-reproduce)
 
 ---
 
-## 🏠 Project Overview
+## 🎯 What We Were Trying to Do
 
-This repository documents the end-to-end solution for predicting Singapore HDB (Housing Development Board) resale flat prices — from raw data exploration through feature engineering, multiple model iterations, and the final winning submission.
+Predict the **resale price of HDB flats in Singapore** as accurately as possible, given a transaction's physical attributes, location, and timing.
 
-**The core finding: CatBoost's native ordered target encoding fundamentally outperforms manually-engineered mean encodings for this dataset**, eliminating target leakage while preserving the full signal from high-cardinality categorical features like address, MRT station name, and flat type.
+Think of it like this: a buyer looks at a flat and asks *"what is this worth?"*. Our model answers that question using 63 measurable signals — from floor area and storey level to which primary school is nearby and how far the nearest MRT station is.
 
-### Results Summary
+**Why RMSE?** Root Mean Squared Error measures the average dollar gap between our predicted price and the actual sale price. An RMSE of 21,000 means our model is, on average, off by roughly $21,000 per transaction — about 4.7% of the typical $449,000 median price.
 
-| Submission | Model | LB RMSE | Notes |
+```
+RMSE = sqrt( average of (predicted_price - actual_price)² )
+
+Example:
+  Actual:    $520,000
+  Predicted: $498,000
+  Error:     $22,000  → this gets squared, averaged, then square-rooted
+```
+
+---
+
+## 📊 The Dataset
+
+| Property | Detail |
+|---|---|
+| Source | Singapore HDB via Kaggle competition |
+| Training rows | 150,634 transactions (2012–2021) |
+| Test rows | 16,735 transactions |
+| Features | 77 columns per transaction |
+| Target | `resale_price` (SGD) |
+| Price range | $150,000 – $1,258,000 |
+| Median price | $420,000 |
+
+### Feature Categories
+
+The 77 columns covered six types of information:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  TRANSACTION    │ Year, month of sale                        │
+│  PHYSICAL       │ Floor area, storey, flat type, age        │
+│  LEASE          │ Remaining lease, commencement year         │
+│  LOCATION       │ Town, block, street, planning area         │
+│  TRANSPORT      │ MRT distance, bus stop, interchange status │
+│  AMENITIES      │ Mall, hawker, school distances & counts    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Important note**: The competition prohibited external datasets — every feature had to come from the provided data files. This constraint shaped many of our decisions.
+
+---
+
+## 🗺️ Our Journey — Version by Version
+
+### The Score Progression
+
+```
+22,500 ┤
+       │  V1    V2    V3    V4    V5    V6
+22,400 ┤  ●─────●─────●─────●─────●─────●
+       │                                   \
+22,300 ┤                                    ●  (V1 best: 22,309)
+       │
+22,200 ┤
+       │
+22,100 ┤
+       │
+22,000 ┤
+       │
+21,900 ┤
+       │                                         V7 CatBoost
+21,800 ┤                                         ●
+       │                                          \
+21,700 ┤                                           \  V8
+       │                                            ●
+21,600 ┤                                             \  V11
+       │                                              ●
+21,500 ┤                                               \  V12  Blend
+       │                                                ●──────●
+21,400 ┤                                                    Group 9 ●
+       │
+```
+
+---
+
+### Phase 1 — Wrong Data Source (Before V1)
+
+**What happened**: We initially downloaded raw CSV files from data.gov.sg, the Singapore government's open data portal. These files contained basic transaction data but were missing the rich location features (MRT distances, school data, mall proximity) that the competition's official training set had.
+
+**Why it mattered**: We were trying to predict prices without the most important signals. Like trying to value a flat without knowing its neighbourhood.
+
+**How we fixed it**: Discovered the official `train.csv` from Kaggle had 77 enriched features vs the raw gov.sg files' ~15. Switched entirely to the official dataset.
+
+**Lesson**: Always verify your data source matches the competition's test set structure.
+
+---
+
+### Phase 2 — LightGBM + XGBoost Baseline (V1–V6)
+
+**What we built**: A standard machine learning ensemble using two popular gradient boosting models — LightGBM (LGB) and XGBoost (XGB) — blended together.
+
+**Gradient boosting explained simply**: Imagine building a team of 500 specialists. Each specialist focuses on correcting the mistakes of the previous one. The final prediction is everyone's combined opinion. LGB and XGB are different implementations of this idea.
+
+```
+V1 approach:
+  addr_mean_price = average(resale_price) per address  ← computed from ALL data
+  Features: 43 total (physical + location + distances)
+  Models: LGB + XGB blended 50/50
+  LB Score: 22,309
+```
+
+**The leakage problem discovered**: Our `addr_mean_price` feature was computed using the entire training set — including the validation rows we were trying to predict. This created "data leakage" — the model was peeking at the answer.
+
+```
+❌ WRONG (global encoding):
+   addr_mean_price for "173 Yishun Ave 7" 
+   = average of ALL transactions at that address
+   = validation rows' prices are included!
+   = artificially inflated training score
+
+✅ RIGHT (OOF encoding):
+   addr_mean_price for fold 3 validation
+   = average of folds 1,2,4,5 transactions only
+   = validation rows never seen during encoding
+```
+
+**What we tried**: Switching to OOF (Out-of-Fold) encoding, adding more features (up to 77), adding more mean encodings (bus stops, schools, postal codes). None of it helped — the leaderboard score stubbornly stayed around 22,300–22,459.
+
+**The uncomfortable truth**: More features with LGB/XGB made things *worse*. V6 with 11 encodings scored 22,459 — the worst result of the LGB/XGB era.
+
+| Version | Features | Encoding | LB Score |
 |---|---|---|---|
-| submission_official | LGB + XGB | 22,309 | Baseline — global mean encoding |
-| submission_oof | LGB + XGB | 22,382 | OOF encoding — more honest |
-| submission_v3 | LGB + XGB | 22,394 | 60 features, OOF |
-| submission_kaggle_v4 | LGB + XGB | 22,378 | 70 features, OOF, 20K trees |
-| submission_kaggle_v5 | LGB + XGB | 22,379 | Global encoding, 70 features |
-| submission_kaggle_v6 | LGB + XGB | 22,459 | 77 features, 11 encodings |
-| **submission_kaggle_v7** | **CatBoost** | **21,615** | **🏆 #1 — 45 features, native encoding** |
+| V1 | 43 | Global (leaked) | 22,309 ✅ best LGB |
+| V2 | 43 | OOF (honest) | 22,382 |
+| V3 | 60 | OOF | 22,394 |
+| V4 | 70 | OOF, 20K trees | 22,378 |
+| V5 | 70 | Global | 22,379 |
+| V6 | 77 | Global + 11 enc | 22,459 ❌ worst |
 
 ---
 
-## 📊 Dataset
+### Phase 3 — The CatBoost Breakthrough (V7)
 
-- **Source**: Singapore Housing Development Board (HDB) via Kaggle competition
-- **Training set**: 150,634 transactions (2012–2021)
-- **Test set**: 16,735 transactions
-- **Target**: `resale_price` (SGD)
-- **Features**: 77 columns including property attributes, location distances, school data, and amenity information
-- **No external datasets used** — competition rules restricted all features to provided data only
+**The insight**: LightGBM and XGBoost cannot handle categorical text features (like town names, flat types, MRT station names) natively. They require manual encoding — which either leaks data (global) or loses signal (OOF). CatBoost was designed to handle this problem differently.
 
-### Key Statistics
-```
-Train resale_price: mean=$449,162  median=$420,000  std=$143,308
-Price range: $150,000 – $1,258,000
-Transaction years: 2012–2021
-Towns: 26 unique HDB towns
-Flat types: 7 (1 ROOM to MULTI-GENERATION)
-```
-
----
-
-## 📁 Repository Structure
+**What CatBoost does differently — Ordered Target Encoding**:
 
 ```
-hdb-price-prediction/
-│
-├── README.md                          # This file
-│
-├── data/
-│   └── README.md                      # Data description (files not included — Kaggle source)
-│
-├── notebooks/
-│   ├── 01_eda.ipynb                   # Exploratory data analysis
-│   ├── 02_feature_engineering.ipynb   # Feature development and correlation analysis
-│   └── 03_model_experiments.ipynb     # All model iterations and experiments
-│
-├── src/
-│   ├── features.py                    # Feature engineering functions
-│   ├── models.py                      # Model training utilities
-│   └── utils.py                       # Helper functions
-│
-├── submissions/
-│   ├── submission_official.csv        # V1 — LGB+XGB baseline
-│   ├── submission_oof.csv             # V2 — OOF encoding
-│   ├── submission_kaggle_v3.csv       # V3 — 60 features
-│   ├── submission_kaggle_v4.csv       # V4 — 70 features, 20K trees
-│   ├── submission_kaggle_v5.csv       # V5 — global encoding
-│   ├── submission_kaggle_v6.csv       # V6 — 77 features, 11 encodings
-│   └── submission_kaggle_v7.csv       # V7 — CatBoost WINNER 🏆
-│
-├── results/
-│   ├── leaderboard_progression.png    # Score progression chart
-│   └── feature_importance.png         # CatBoost feature importance
-│
-├── docs/
-│   ├── whitepaper_ntu.pdf             # NTU paper on HDB price prediction
-│   └── whitepaper_liu_pan.pdf         # Liu & Pan 2024 factor analysis
-│
-├── kaggle_catboost_v7.py              # 🏆 WINNING SCRIPT — run this on Kaggle
-├── kaggle_notebook_v6.py              # Previous best LGB+XGB attempt
-└── requirements.txt                   # Python dependencies
+Standard mean encoding (LGB/XGB):
+  "WOODLANDS" → $380,000  ← average of ALL Woodlands transactions
+                            validation rows included = LEAKAGE
+
+CatBoost ordered encoding:
+  For row 5,000 in "WOODLANDS":
+  → Uses only rows 1–4,999 that are also "WOODLANDS"
+  → Each row sees only transactions that came BEFORE it
+  → Zero leakage by construction
+```
+
+**Result**:
+
+```
+V7: CatBoost, 45 features, 7 raw categoricals
+    OOF RMSE:  21,769  (honest)
+    LB Score:  21,615  ← LB BETTER than OOF!
+
+    Compare to V5: OOF 21,610 (leaked) → LB 22,379 (800 worse)
+    CatBoost gap: −154 points (model generalises beyond training)
+    LGB/XGB gap: +769 points (leakage inflates training score)
+```
+
+**This was the single biggest turning point.** Switching from LGB/XGB to CatBoost improved the leaderboard score by **694 points** (22,309 → 21,615) — equivalent to predicting each flat $694 more accurately on average.
+
+**Feature importance from CatBoost V7**:
+
+```
+full_flat_type    ████████████████  14.3%  ← #1 (was never #1 in LGB/XGB)
+floor_area_sqm    █████████          8.6%
+lease_x_area      ███████            7.2%
+dist_cbd          ██████             6.9%
+time_index        ██████             6.6%
+mrt_name          █████              5.1%
+town              █████              5.0%
 ```
 
 ---
 
-## 🗺️ The Full Journey
+### Phase 4 — Seed Ensembling (V8)
 
-### Phase 1 — Data Source Investigation
-
-The competition provided 5 raw CSV files from [data.gov.sg](https://data.gov.sg/collections/189/view) covering HDB resale transactions from 1990–2026. The test set was an **enriched version** with 77 features including MRT proximity, school distances, mall access, and geo-coordinates — features not present in the raw gov data.
-
-**Key discovery**: The `test.csv` provided by Kaggle contained the same 76 features as the training set. The initial approach of using the raw gov.sg CSVs was therefore **using the wrong training data** — the official `train.csv` from the competition had the full enriched feature set.
-
-### Phase 2 — Academic Foundation
-
-Two white papers informed feature selection:
-
-**NTU Paper (Wang et al., 2016)** — identified 6 intrinsic HDB value drivers:
-- Number of rooms, floor level, floor area, lease duration, distance to school, distance to MRT
-
-**Liu & Pan (ICFTBA 2024)** — confirmed via MLR that:
-- Floor area (r=0.69) and flat type (r=0.70) are top signals
-- Remaining lease is significant; flat model and lease commence date are collinear and droppable in linear models
-- VIF analysis: remaining lease and lease commence date r=0.999 → drop one for linear models
-
-### Phase 3 — Baseline Model
-
-**submission_official (LB: 22,309)**  
-- LightGBM + XGBoost, 43 features  
-- Global `addr_mean_price` encoding  
-- Simple 50/50 blend  
-- ~516 LGB trees, ~1,182 XGB trees at LR=0.05  
-
-This became the benchmark to beat. Every subsequent attempt for 6 versions failed to improve on it.
-
-### Phase 4 — The Leakage Problem
-
-The critical issue with all LGB/XGB versions was **target encoding leakage**:
+**The concept**: Training the same model 3 times with different random seeds produces slightly different predictions. Averaging them reduces random noise.
 
 ```
-Global mean encoding:
-  addr_mean_price = avg(resale_price) for each address
-                    ← computed from ALL 150,634 rows
-                    ← validation rows' prices are included
-                    ← OOF RMSE is artificially inflated
+Seed 42   predicts flat X: $452,000
+Seed 2024 predicts flat X: $448,000
+Seed 888  predicts flat X: $449,000
+─────────────────────────────────────
+Ensemble average:          $449,667  ← smoother, more accurate
 ```
 
-This created a systematic ~750 point gap between OOF RMSE and leaderboard RMSE across all versions. The model "learned" to trust `addr_mean_price` as a near-perfect predictor — but on truly unseen test data, this signal was weaker.
-
-| Version | OOF RMSE | LB RMSE | Gap (leakage) |
-|---|---|---|---|
-| V5 (global) | 21,610 | 22,379 | **769 points** |
-| V6 (global+11 enc) | 21,669 | 22,459 | **790 points** |
-| V7 CatBoost | 21,769 | 21,615 | **−154 points** ✅ |
-
-V7 actually scored **better** on the leaderboard than OOF — because CatBoost's ordered encoding is properly conservative, sometimes slightly *underestimating* training performance.
+**V8**: 3 seeds × 10 folds = 30 models  
+**OOF gain from ensembling**: +159 RMSE points  
+**LB Score**: 21,615 (V7) → not directly comparable (V8 used different hyperparams)
 
 ---
 
-## ⚙️ Feature Engineering
+### Phase 5 — Region Features + Learning Rate Fix (V11)
 
-### Features KEPT (final 45 for V7)
+**New features**: Singapore's property market is officially segmented into three regions:
+- **CCR** (Core Central Region): Districts 9, 10, 11 — prime, highest prices
+- **RCR** (Rest of Central Region): Districts 1–8, 12–15, 20 — mid-tier
+- **OCR** (Outside Central Region): Districts 16–28 — heartland HDB majority
 
-**Temporal (3)**
-| Feature | Description | Correlation |
-|---|---|---|
-| `Tranc_Year` | Transaction year | Market cycle signal |
-| `Tranc_Month` | Transaction month | Seasonal effects |
-| `time_index` | Months since Jan 2012 | Continuous time signal |
+We added `region`, `region × flat_type`, and `region × town` as raw categoricals.
 
-**Physical Property (8)**
-| Feature | Description | Correlation |
-|---|---|---|
-| `floor_area_sqm` | Flat size in sqm | +0.654 |
-| `mid_storey` | Floor midpoint | +0.353 |
-| `max_floor_lvl` | Block height | +0.496 |
-| `hdb_age` | Age at transaction | −0.350 |
-| `lease_commence_date` | Build year | +0.350 |
-| `remaining_lease` | Years of lease left | +0.362 |
-| `total_dwelling_units` | Units in block | −0.141 |
-| `flat_type_enc` | Ordinal room encoding | +0.663 |
+**Critical bug fixed**: V10 (not shown) used `iterations=25,000` with `learning_rate=0.03`. Every single fold hit the iteration cap without ever triggering early stopping — the model kept memorising training data past its optimal point. V11 fixed this with `learning_rate=0.02`.
 
-**Engineered Interactions (4)**
-| Feature | Formula | Rationale |
-|---|---|---|
-| `area_x_storey` | floor_area × mid_storey | Size-height premium |
-| `area_per_storey` | floor_area / (mid_storey+1) | Normalised area |
-| `storey_ratio` | mid_storey / max_floor_lvl | Relative floor position |
-| `lease_x_area` | remaining_lease × floor_area | Lease-size composite |
+```
+V10 (broken):   best_iter = 24,997  ← hit cap, never converged
+V11 (fixed):    best_iter = 11,303  ← stopped at right time ✅
+```
 
-**Distance Features (12)**
-- MRT: `mrt_nearest_distance`, `log_mrt_dist`, `mrt_interchange`, `bus_interchange`
-- Mall: `Mall_Nearest_Distance`, `log_mall_dist`, `Mall_Within_1km`, `Mall_Within_2km`
-- Hawker: `Hawker_Nearest_Distance`, `log_hawker_dist`, `Hawker_Within_1km`, `Hawker_Within_2km`
-
-**School & Amenity (6)**
-- `pri_sch_nearest_distance`, `pri_sch_affiliation`
-- `sec_sch_nearest_dist`, `cutoff_point`, `affiliation`
-- `bus_stop_nearest`, `hawker_food_stalls`
-
-**Geo (4)**
-- `Latitude`, `Longitude`, `dist_cbd`, `multistorey_carpark`
-
-**Categorical — Native CatBoost (7)**
-| Feature | Unique Values | Why Included |
-|---|---|---|
-| `town` | 26 | Primary location signal |
-| `flat_type` | 7 | Room count category |
-| `flat_model` | 20 | Build quality/era |
-| `planning_area` | 32 | Sub-region signal |
-| `mrt_name` | 94 | Nearest MRT station |
-| `full_flat_type` | 43 | Most granular flat descriptor |
-| `address` | 9,157 | Block-level location |
+**LB Score**: 21,499 — improvement of 116 points over V8 equivalent.
 
 ---
 
-## 🔬 Feature Selection Process
+### Phase 6 — School Prestige Features (V12)
 
-### Step 1 — Correlation Screening
+**The real-world insight**: Singapore has a strict 1km priority rule for primary school registration. Families pay a premium to live within 1km of prestigious schools (GEP schools, SAP schools). This is a well-known property market phenomenon locally.
 
-Initial Pearson correlation with `resale_price`:
+**What we added**:
+- `pri_sch_name` and `sec_sch_name` as raw CatBoost categoricals (177 + 134 schools)
+- `school_prestige` tier (1–5) based on MOE GEP/SAP rankings from Skoolopedia
+- `prestige_in_1km`: school tier × within-1km flag
+- Non-linear transforms: `floor_area²`, `storey²`, `remaining_lease²`
+- 5 seeds instead of 3 (50 total models)
 
+**Price premium discovered**:
 ```
-STRONG (|r| > 0.4):   flat_type_enc, floor_area_sqm, max_floor_lvl
-MEDIUM (|r| > 0.2):   mid_storey, remaining_lease, hdb_age, dist_cbd
-WEAK   (|r| > 0.1):   mrt_nearest_distance, total_dwelling_units
-NOISE  (|r| < 0.1):   month_num, hawker_market_stalls, vacancy
-```
-
-### Step 2 — Multicollinearity Check
-
-Following Liu & Pan (2024) VIF analysis:
-- `remaining_lease` ↔ `lease_commence_date`: r=0.999 → kept both for tree models (invariant to collinearity), drop one for linear models
-- `floor_area_sqm` ↔ `flat_type_enc`: r=0.95 → both kept
-- `hdb_age` ↔ `remaining_lease`: r≈−1.0 → both kept (different computation paths)
-
-### Step 3 — Untapped Signal Discovery
-
-Late-stage discovery of high-value unused features:
-```
-bus_stop_name mean encoding:   r=+0.703  (1,657 unique stops)
-full_postal mean encoding:     r=+0.913  (near address-level)
-postal_sector mean encoding:   r=+0.538  (245 sectors)
-pri_sch_name mean encoding:    r=+0.490  (177 schools)
-sec_sch_name mean encoding:    r=+0.486  (134 schools)
+Near Pei Hwa Presbyterian (Tier 5 GEP school): avg $790,503
+Near non-prestigious school:                    avg $446,000
+Premium:                                        +$344,503 (+77%)
 ```
 
-**However**: Adding these as global mean encodings made LB scores *worse* despite better OOF scores — due to compounding leakage. CatBoost handles all of these natively without any manual encoding.
+**Result**: LB 21,494 — only 5 points better than V11. The school signals were already partially captured by `address`, `town`, and `planning_area`.
 
-### Step 4 — Features DROPPED and Why
+---
+
+### Phase 7 — Blending (Final)
+
+**The simple idea**: Average the predictions from V11 and V12. Where the two models disagree, the truth often lies between them.
+
+```
+522 rows where V11 and V12 disagreed by >$5,000:
+  Example: Flat ID 58743
+  V11 predicted: $879,168
+  V12 predicted: $913,714
+  Blend (50/50): $896,441  ← splits the difference
+```
+
+**Result**: blend_50_50 scored **21,471** — the biggest single jump since V7:
+- From V12 (21,494) to blend (21,471): **−23 points**
+- Achieved **2nd place** on the public leaderboard
+
+---
+
+## 🔑 Key Turning Points
+
+### Turning Point 1: Discovering the Data Leakage (V1→V7)
+**Impact: +694 RMSE points**
+
+The moment we realised that global mean encoding was inflating our training score by ~750 points — and that CatBoost eliminates this problem natively — was the most important insight of the competition.
+
+```
+LGB/XGB global encoding:  OOF 21,610 → LB 22,379  (gap: +769)
+CatBoost ordered:         OOF 21,769 → LB 21,615  (gap: -154) ✅
+```
+
+### Turning Point 2: Switching to CatBoost (V6→V7)
+**Impact: +694 RMSE on leaderboard**
+
+Not just a model swap — a fundamentally different approach to encoding categorical data.
+
+### Turning Point 3: Seed Ensembling (V7→V8)
+**Impact: +159 OOF RMSE from averaging**
+
+Averaging 30 models reduced prediction variance significantly.
+
+### Turning Point 4: Blending V11 + V12 (V12→Blend)
+**Impact: +23 LB RMSE, jumped from #3 to #2**
+
+Two independently trained model families, averaged together, reduced noise further.
+
+---
+
+## ⚙️ Feature Engineering Deep Dive
+
+### Features We Kept and Why
+
+**Time features** — property prices follow market cycles:
+```python
+time_index = (Tranc_Year - 2012) × 12 + Tranc_Month
+# Continuous time signal capturing market cycles
+# Most important feature across all versions
+```
+
+**Physical interactions** — size × storey is non-linear:
+```python
+area_x_storey    = floor_area_sqm × mid_storey
+lease_x_area     = remaining_lease × floor_area_sqm
+floor_area_sq    = floor_area_sqm²   # non-linear size premium
+storey_sq        = mid_storey²       # high floors exponentially valuable
+```
+
+**Location at 6 granularities** (from finest to coarsest):
+```
+address (9,157 unique)    → block-level
+full_postal (9,124 unique) → postal code
+bus_stop_name (1,657)     → hyper-local
+postal_sector (245)       → 3-digit postal
+planning_area (32)        → sub-region
+town (26)                 → HDB town
+```
+
+**School prestige** — exploiting Singapore's 1km rule:
+```python
+school_prestige = {
+    'Nanyang Primary School': 5,    # GEP school
+    'Henry Park Primary School': 5, # GEP, affiliated Hwa Chong
+    'Nan Hua Primary School': 4,    # SAP school
+    ...
+}
+prestige_in_1km = school_prestige × (distance ≤ 1000m)
+```
+
+### Features We Dropped and Why
 
 | Feature | Reason Dropped |
 |---|---|
-| `block` (raw) | High cardinality string; captured via `address` |
-| `street_name` (raw) | Same as block; merged into `address` |
+| `floor_area_sqft` | Exact duplicate of `floor_area_sqm` × 10.764 |
+| `lease_commence_date` | Near-perfect correlation with `remaining_lease` (r=0.999) |
+| `flat_model` | VIF > 5 — collinear with other features (Liu & Pan, 2024) |
+| `1room_rental` to `other_room_rental` | Correlation < 0.08 — noise |
+| `addr_price_slope` | Noisy for addresses with < 3 transactions |
 | `storey_range` (raw string) | Parsed into numeric `mid_storey` |
-| `floor_area_sqft` | Duplicate of `floor_area_sqm` (× 10.764) |
-| `addr_mean_price` | Global encoding — causes leakage in LGB/XGB |
-| `town_mean_price` | Same leakage issue |
-| `Tranc_YearMonth` | Decomposed into `Tranc_Year` + `Tranc_Month` |
-| `1room_rental`–`other_room_rental` | Corr < 0.08, adds noise |
-| `vacancy` | Corr = −0.016, no predictive value |
-| `hawker_market_stalls` | Corr = −0.009, noise |
-| `precinct_pavilion` | Near-zero importance across all models |
 
 ---
 
-## 🤖 Model Evolution
+## 🐱 Why CatBoost Beat Everything Else
 
-### V1 — LightGBM + XGBoost Baseline
-```python
-# Global mean encoding
-addr_mean_price = train.groupby('address')['resale_price'].mean()
-
-# Fixed blend
-final = 0.50 * lgb_preds + 0.50 * xgb_preds
-```
-**LB: 22,309** — set the benchmark
-
-### V2 — OOF Mean Encoding
-```python
-# Per-fold encoding (honest, no leakage)
-fold_addr_mean = tr_df.groupby('address')['resale_price'].mean()
-val_addr = val_df['address'].map(fold_addr_mean).fillna(fold_global)
-```
-**LB: 22,382** — worse than global. OOF encoding was too conservative.
-
-### V3–V4 — More Features + More Trees
-- Added room composition ratios (`pct_large`, `pct_3room`)  
-- Added `full_flat_type` mean encoding  
-- Increased to 20,000 trees, early stopping 500  
-**LB: 22,378–22,394** — marginal differences, plateau reached
-
-### V5–V6 — Returning to Global Encoding + More Encodings
-- V5: Back to global encoding, 70 features → **LB: 22,379**  
-- V6: Added 6 more mean encodings (bus stop, postal, schools) → **LB: 22,459** (worse!)
-
-**Lesson**: More mean encodings compound leakage on the test set. Each additional global encoding adds training-time signal that evaporates on truly unseen data.
-
-### V7 — CatBoost (WINNER 🏆)
-```python
-# No manual encoding at all
-CAT_COLS = ['town','flat_type','flat_model','planning_area',
-            'mrt_name','full_flat_type','address']
-
-# CatBoost handles encoding internally via ordered boosting
-train_pool = Pool(X_train, y_train, cat_features=cat_indices)
-cb = CatBoostRegressor(iterations=10000, learning_rate=0.03, depth=8)
-cb.fit(train_pool, eval_set=val_pool)
-```
-**LB: 21,615** — beat Team 1 by 62 points 🏆
-
----
-
-## 🐱 Why CatBoost Won
-
-### 1. Ordered Target Encoding (Zero Leakage)
-
-CatBoost computes target statistics for each training example using **only the examples that appeared before it** in a random permutation — similar in spirit to OOF encoding but applied at the individual row level:
+### The Leakage Gap — Visualised
 
 ```
-For row i with address "173, Yishun Ave 7":
-  CatBoost encodes = avg(resale_price for all j < i with same address)
-  
-  → Each row's encoding is computed from different data
-  → Zero information leakage from validation rows
-  → OOF RMSE ≈ true generalisation performance
+What LGB/XGB sees:                What CatBoost sees:
+─────────────────                 ──────────────────
+addr_mean_price                   No manual encoding needed
+= avg of ALL rows                 → learns internally using
+  including validation            → ordered statistics
+  ← CHEATING!                    → zero leakage ✅
+
+OOF score:  21,610 (optimistic)   OOF score:  21,769 (honest)
+LB score:   22,379 (reality)      LB score:   21,615 (reality)
+Gap:        +769 points           Gap:        -154 points
 ```
 
-Compare this to global mean encoding where every row (including validation) has seen all prices for its address.
+### Symmetric Trees
 
-### 2. Symmetric Trees (Oblivious Decision Trees)
+LightGBM and XGBoost grow asymmetric trees that can overfit local patterns. CatBoost grows **symmetric (oblivious) trees** — every node at the same depth uses the same split condition. This makes CatBoost:
+- More regularised by default
+- Better at handling high-cardinality features like `address` (9,157 unique values)
+- More stable across different random seeds
 
-LightGBM and XGBoost build asymmetric trees that can overfit to local patterns. CatBoost builds **symmetric (oblivious) trees** where every node at the same depth uses the same split condition:
+### The Numbers Don't Lie
 
-```
-LGB/XGB asymmetric tree:          CatBoost symmetric tree:
-        [mrt < 500]                    [mrt < 500]
-       /           \                  /           \
-  [area > 90]   [floor > 8]      [area > 90]   [area > 90]
-  /    \         /    \           /    \         /    \
- ...   ...     ...   ...        ...   ...     ...   ...
-```
-
-This makes CatBoost:
-- **More regularised** by default (harder to memorise training data)
-- **Faster at inference** (lookup table evaluation)
-- **More robust** to the high-cardinality `address` feature (9,157 values)
-
-### 3. Native Handling of High-Cardinality Categoricals
-
-For a feature like `address` with 9,157 unique values:
-
-| Method | LGB/XGB approach | CatBoost approach |
+| Model | LB Score | vs CatBoost |
 |---|---|---|
-| Label encoding | 1–9,157 ordinal | N/A |
-| Mean encoding (global) | Avg price per address | N/A |
-| Mean encoding (OOF) | Avg from other folds | N/A |
-| **Native** | ❌ not available | ✅ ordered target stat |
+| LGB + XGB (best) | 22,309 | +694 worse |
+| **CatBoost V7** | **21,615** | **baseline** |
 
-CatBoost extracts **far more information** from `address`, `mrt_name`, and `full_flat_type` than any manual encoding — as shown by `full_flat_type` becoming the **#1 feature at 14.32% importance**, something it never achieved with label encoding in LGB/XGB.
+---
 
-### 4. The OOF–Leaderboard Gap Comparison
+## 🚧 Challenges and How We Managed Them
 
-| Model | OOF RMSE | LB RMSE | Gap | Verdict |
+### Challenge 1: Session Timeouts
+
+**Problem**: Training 50 CatBoost models takes 7+ hours. Our development environment (Claude.ai sandbox) resets between sessions, losing all trained models.
+
+**Solution**: Migrated entirely to Kaggle notebooks. Kaggle provides free GPU (T4 × 2) with 12-hour session limits and persistent output storage. Used "Save & Run All (Commit)" so training runs server-side even with the laptop closed.
+
+### Challenge 2: Wrong Dataset
+
+**Problem**: Initial data sourced from data.gov.sg had only ~15 features vs the competition's 77-feature enriched dataset. We were building models on incomplete data.
+
+**Solution**: Discovered the official `train.csv` from the Kaggle competition page had all enriched features pre-computed (MRT distances, school data, etc.). Rebuilt everything from scratch.
+
+### Challenge 3: The OOF vs Leaderboard Gap
+
+**Problem**: Our LGB/XGB models showed great OOF scores (~21,500) but leaderboard scores were ~22,300 — a 800-point gap that didn't make sense initially.
+
+**Solution**: Identified global mean encoding as the cause. When `addr_mean_price` is computed from all training data including validation rows, the model "cheats" during validation. On the test set (truly unseen), this leakage provides no benefit, so performance collapses. CatBoost eliminated this entirely.
+
+```
+The telltale sign of leakage:
+OOF score << LB score  →  leakage present
+OOF score ≈ LB score   →  honest model
+OOF score >> LB score  →  model generalises well (ideal)
+```
+
+### Challenge 4: The Problem Fold (Seed 42, Fold 4)
+
+**Problem**: Across every version, one specific fold consistently scored ~22,399 — over 1,000 points worse than other folds. This dragged the seed OOF higher.
+
+**Root cause**: Standard KFold's random split happened to cluster rare, expensive flats (CCR executive units, multi-generation) into the validation set of Fold 4. The model hadn't seen enough of these during training to predict them accurately.
+
+**Solution implemented**: V13 switches to Stratified KFold, splitting the data into 10 price quantile bands and ensuring each fold has the same proportion of cheap, mid-range, and expensive flats.
+
+```
+Standard KFold (bad):        Stratified KFold (V13):
+Fold 4 validation:           Fold 4 validation:
+  45% budget flats    ❌       10% budget flats     ✅
+  35% mid-range       ❌       10% mid-range        ✅
+  20% expensive       ❌       10% expensive        ✅
+  → model unprepared          → model well prepared
+```
+
+### Challenge 5: The Data Leakage Patch Backfired
+
+**Problem**: We discovered 523 test rows were exact duplicates of training rows — meaning we knew their prices. A patch script was written to override model predictions with known prices.
+
+**Result**: Leaderboard score got *worse* (21,853 vs 21,494).
+
+**Why it backfired**: CatBoost's ordered encoding had already seen these rows in training folds 80% of the time — it was already predicting them accurately. The patch introduced noise because some duplicates had multiple conflicting prices in training ($303,000 vs $318,000 for the same flat in the same month).
+
+**Lesson**: Don't patch what isn't broken. Verify your assumptions before overriding a well-trained model.
+
+---
+
+## ⚠️ Model Limitations
+
+### 1. Temporal Generalisation
+The model was trained on 2012–2021 data. Post-2022 market conditions (interest rate rises, cooling measures, COVID aftermath) are not represented. Predictions for 2024–2025 transactions would likely be less accurate.
+
+### 2. No Renovation or Condition Data
+HDB resale prices are heavily influenced by renovation quality, interior condition, and furniture. A flat in original 1990s condition vs one with a full $80,000 renovation can differ by $100,000+ at the same address. The dataset has no proxy for this.
+
+### 3. The 30/70 Public/Private Split
+The current leaderboard uses only 30% of test data. Final rankings shift when the remaining 70% is scored. Our 2nd-place position may change — positively or negatively.
+
+### 4. View and Facing Direction
+A flat facing a reservoir vs facing another HDB block can command a 10–15% premium. `Latitude` and `Longitude` partially proxy this but not precisely.
+
+### 5. The Problem Fold
+Seed 42 Fold 4 consistently underperforms. This suggests a systematic data distribution issue — likely rare flat combinations clustering in one validation split — that standard KFold cannot handle.
+
+### 6. Competition Data Constraint
+No external data was allowed. In a real-world setting, adding PropertyGuru listing data, URA private transaction comparables, or interest rate history would materially improve predictions.
+
+---
+
+## 📚 Key Learnings
+
+### 1. Data Leakage Is the Biggest Risk in ML Competitions
+**The OOF vs leaderboard gap is your leakage detector.**
+- OOF much better than LB → leakage in training
+- OOF ≈ LB → honest model
+- LB better than OOF → genuinely generalising (ideal, rare)
+
+### 2. Model Choice Matters More Than Feature Engineering
+Switching from LGB/XGB to CatBoost gained **694 points**. Adding 34 more features to LGB/XGB gained **0 points**. Sometimes the right tool matters more than more features.
+
+### 3. Categorical Features Need Native Handling
+Manual encoding (label encoding, mean encoding) always involves a tradeoff between leakage and information loss. CatBoost's ordered encoding eliminates both issues simultaneously.
+
+### 4. Ensembling is Free Money
+- Multiple seeds → +176 OOF RMSE points (V12 ensemble gain)
+- Blending V11 + V12 → +23 LB RMSE points
+- These gains require zero new features or model complexity
+
+### 5. The OOF–LB Gap Reveals Your Model's Integrity
+
+| Model | OOF | LB | Gap | Interpretation |
 |---|---|---|---|---|
-| LGB+XGB global | 21,610 | 22,379 | +769 | Severe leakage |
-| LGB+XGB OOF | 22,461 | 22,378 | −83 | Honest but weak |
-| **CatBoost** | **21,769** | **21,615** | **−154** | **Honest + strong** ✅ |
+| V5 global LGB | 21,610 | 22,379 | +769 | Severe leakage |
+| V7 CatBoost | 21,769 | 21,615 | −154 | Genuine generalisation |
+| V12 CatBoost | 21,324 | 21,494 | +170 | Slight leakage (school enc) |
 
-CatBoost's leaderboard score was **154 points better** than OOF — meaning it generalises *beyond* what training validation suggests. This is the hallmark of a well-regularised model that hasn't overfit.
+### 6. Simple Blends Often Beat Complex Features
+Adding school prestige features (hours of work) gained 5 LB points. Blending two existing submissions (minutes of work) gained 23 LB points. Always try the simple thing first.
 
----
+### 7. Convergence Must Be Verified
+V10's catastrophic failure (OOF 21,554 vs V8's 21,416) happened because every fold hit the iteration cap — early stopping never triggered. Always verify `best_iter` is well below `max_iterations`.
 
-## 🎛️ Hyperparameters
-
-### Final CatBoost Configuration
-
-```python
-CB_PARAMS = dict(
-    iterations          = 10000,   # Max boosting rounds
-    learning_rate       = 0.03,    # Step size (CB converges faster than LGB at same LR)
-    depth               = 8,       # Symmetric tree depth
-    l2_leaf_reg         = 3.0,     # L2 regularisation (penalises large leaf weights)
-    random_strength     = 1.0,     # Randomisation for split scoring (prevents overfit)
-    bagging_temperature = 1.0,     # Bayesian bootstrap row sampling intensity
-    border_count        = 128,     # Number of candidate splits per numeric feature
-    od_type             = 'Iter',  # Overfitting detector: stop after od_wait iterations
-    od_wait             = 200,     # Early stopping patience
-    random_seed         = 42,
-    task_type           = 'GPU',   # GPU acceleration
-    eval_metric         = 'RMSE',
-    loss_function       = 'RMSE',
-)
+```
+Good convergence:    best_iter = 11,303  (max: 20,000) ✅
+Bad convergence:     best_iter = 24,997  (max: 25,000) ❌
 ```
 
-### Tuning Guide
+---
 
-| Parameter | Effect | Range to Try |
+## 🚀 What We Would Do With No Constraints
+
+Given unlimited data, compute, and time — here's how to build a materially better model:
+
+### 1. External Data Sources
+
+| Data | Signal | Expected Gain |
 |---|---|---|
-| `iterations` | More trees = better fit (with early stopping) | 10,000–20,000 |
-| `learning_rate` | Lower = better generalisation, slower | 0.01–0.05 |
-| `depth` | Deeper = more complex patterns | 6–10 |
-| `l2_leaf_reg` | Higher = more regularisation | 1–10 |
-| `random_strength` | Higher = more randomisation | 0.5–2.0 |
-| `bagging_temperature` | Higher = more diverse trees | 0.5–2.0 |
-| `od_wait` | Higher = more patience before stopping | 100–500 |
+| PropertyGuru listing prices | Days on market, asking vs selling price | High |
+| URA private transaction data | Private condo comparables nearby | High |
+| HDB resale price index (quarterly) | Market cycle timing | Medium |
+| Interest rate history (MAS) | Mortgage affordability shifts | Medium |
+| Google Street View images | Block condition, neighbourhood quality | High |
+| School ballot results (annual) | Actual oversubscription rate | Medium |
 
-### Why LR=0.03 vs LR=0.01 (used for LGB/XGB)
+### 2. Renovation and Condition Proxy
+Scrape PropertyGuru listings for HDB flats, extract renovation keywords (e.g. "renovated 2022", "original condition", "full reno") and build a renovation quality score. This alone could explain $50,000–$100,000 in price variance.
 
-CatBoost's ordered boosting introduces inherent variance reduction per tree — it effectively gets "more" out of each iteration than LGB/XGB. LR=0.03 with 10,000 trees for CatBoost is approximately equivalent to LR=0.01 with 15,000 trees for LightGBM in terms of convergence quality.
+### 3. Spatial Features
+Compute distances to:
+- Hawker centres with specific cuisine type ratings
+- Parks and green corridors (within 500m)
+- Community centres, polyclinics, wet markets
+- Specific MRT lines (Circle Line commands different premium than North-South)
+
+### 4. View and Orientation
+Using satellite imagery or building footprint data, determine:
+- Whether a flat faces a reservoir, sea, or park
+- Whether it faces another block (corridor/privacy issue)
+- Floor-to-ceiling height estimation from building plans
+
+### 5. Time-Aware Models
+Use a time-series aware cross-validation — train on 2012–2018, validate on 2019, then train 2012–2019, validate on 2020, etc. This would:
+- Prevent future data leaking into past predictions
+- Better estimate how the model performs on future transactions
+- Allow the model to learn from market cycle patterns explicitly
+
+### 6. Neural Architecture
+For a dataset this size (150K rows), a **Gradient Boosted Tree + Neural Network blend** would capture both:
+- Tabular structure (trees handle this well)
+- Complex non-linear interactions (neural networks handle this better)
+
+Specifically, **FT-Transformer** (Feature Tokenizer + Transformer) has shown strong results on tabular regression tasks of this scale.
+
+### 7. Stacking with a Meta-Learner
+Instead of a simple average blend:
+```
+Level 1: CatBoost OOF predictions
+Level 1: LightGBM OOF predictions  → Ridge regression → Final prediction
+Level 1: XGBoost OOF predictions
+```
+This learns the optimal blend weights from data rather than fixing them manually.
 
 ---
 
-## 📚 Key Lessons Learned
+## 📈 Full Competition Leaderboard History
 
-### ✅ What Worked
-
-1. **CatBoost native encoding** — eliminated leakage entirely, improved LB by 694 points over our best LGB/XGB score
-2. **Log-transforming the target** — `log1p(resale_price)` stabilised training and reduced sensitivity to outliers
-3. **Interaction features** — `lease_x_area` became the #2 feature in CatBoost at 7.24%
-4. **Distance log-transforms** — `log_mrt_dist` better captures the non-linear proximity premium
-5. **5-fold CV** — essential for stable OOF estimates and averaging test predictions
-6. **Early stopping with patience** — prevented overfitting, identified true optimal iterations
-
-### ❌ What Didn't Work
-
-1. **Global mean encoding for LGB/XGB** — inflated OOF RMSE by ~750 points vs leaderboard. The model learned to trust `addr_mean_price` but that signal weakened on truly unseen addresses
-2. **Adding more mean encodings** — each additional encoding (bus stop, postal, school name) compounded leakage. V6 with 11 encodings scored *worse* (22,459) than V5 with 5 (22,379)
-3. **More features ≠ better results** — going from 43 → 70 → 77 features with LGB/XGB consistently hurt leaderboard scores despite better OOF metrics
-4. **Addr price slope feature** — year-on-year appreciation per address was noisy for addresses with <3 transactions, adding noise to OOF
-5. **Increasing trees beyond convergence** — LGB/XGB had genuinely converged at ~700–1,200 iterations; pushing to 20,000 yielded <2 RMSE improvement
-6. **Random Forest** — not tested due to time, but likely would have helped as a third ensemble model
-
-### 🔍 The Core Insight
-
-> **The gap between OOF RMSE and leaderboard RMSE is your leakage detector.**
-> 
-> LGB/XGB versions: OOF always ~750 points better than LB → severe leakage  
-> CatBoost V7: LB **154 points better** than OOF → genuine generalisation  
->
-> When your model scores better on the leaderboard than your validation, you've built something that truly generalises.
+| Version | Model | Key Change | LB Score | Position |
+|---|---|---|---|---|
+| V1 (submission_official) | LGB+XGB | Baseline, global encoding | 22,309 | #2 |
+| V2 (submission_oof) | LGB+XGB | OOF encoding | 22,382 | — |
+| V3 | LGB+XGB | 60 features | 22,394 | — |
+| V4 | LGB+XGB | 70 feat, 20K trees | 22,378 | — |
+| V5 | LGB+XGB | Global enc, 70 feat | 22,379 | — |
+| V6 | LGB+XGB | 77 feat, 11 encodings | 22,459 | — |
+| **V7** | **CatBoost** | **Native encoding, 45 feat** | **21,615** | **🥇 #1** |
+| V8 | CatBoost | 3-seed×10-fold, tuned | 21,538 | — |
+| V11 | CatBoost | Region features, LR fix | 21,499 | #3 |
+| V12 | CatBoost | School names, 5 seeds | 21,494 | #3 |
+| **Blend 50/50** | **V11+V12** | **Equal blend** | **21,471** | **🥈 #2** |
+| **Blend 45/55** | **V11+V12** | **V12-favoured** | **21,471** | **🥈 #2** |
+| V13 (pending) | CatBoost | Stratified KFold | TBD | TBD |
 
 ---
 
@@ -455,62 +604,37 @@ pip install catboost lightgbm xgboost scikit-learn pandas numpy
 
 ### Run the Winning Model (Kaggle)
 
-1. Upload `train.csv`, `test.csv`, `sample_sub_reg.csv` to a Kaggle dataset named `hdb-data`
-2. Create a new Kaggle notebook and paste `kaggle_catboost_v7.py`
-3. Enable GPU T4 x2 accelerator
-4. Run All → download `submission_kaggle_v7.csv`
-5. Submit to competition
-
-### Run Locally
-
-```python
-# Set paths in kaggle_catboost_v7.py
-BASE_PATH = './data'           # folder containing train.csv, test.csv
-USE_GPU   = False              # set True if CUDA GPU available
-OUTPUT    = './submissions/submission_v7.csv'
-```
+1. Upload `train.csv`, `test.csv`, `sample_sub_reg.csv` to a Kaggle dataset
+2. Create a new Kaggle notebook
+3. Set accelerator: **GPU T4 × 2**
+4. Paste `kaggle_catboost_v12.py` and update `BASE_PATH` to your dataset path
+5. **Save Version → Save & Run All (Commit)**
+6. Download `submission_kaggle_v12.csv` from Output tab
+7. Submit to competition
 
 ### Expected Runtime
 
 | Environment | Time |
 |---|---|
-| Kaggle GPU T4 x2 | ~25 minutes |
-| Local GPU (RTX 3080+) | ~20 minutes |
-| Local CPU (8 cores) | ~3–4 hours |
+| Kaggle GPU T4 × 2 | ~7 hours (50 models) |
+| Local GPU (RTX 3080+) | ~5 hours |
+| Local CPU (8 cores) | ~30–40 hours |
 
 ---
 
-## 📈 Leaderboard Progression
-
-```
-22,309  ████████████████████████████████████████ submission_official (LGB+XGB)
-22,394  █████████████████████████████████████████ submission_v3
-22,382  ████████████████████████████████████████ submission_oof
-22,378  ████████████████████████████████████████ submission_v4
-22,379  ████████████████████████████████████████ submission_v5
-22,459  █████████████████████████████████████████ submission_v6 (peaked wrong direction)
-21,615  ████████████████████████████████████ submission_v7 CatBoost 🏆
-```
-
----
-
-## 📖 References
+## 📖 Academic References
 
 1. Wang, L., Chan, F.F., Wang, Y., & Chang, Q. (2016). *Predicting Public Housing Prices Using Delayed Neural Networks*. IEEE TENCON 2016.
+   - Key finding: Floor area, floor level, MRT distance, lease duration are top HDB price signals
 
-2. Liu, Z., & Pan, Y. (2024). *Research of the Influence Factors of Housing Price — Take Singapore as an Example*. Proceedings of ICFTBA 2024.
+2. Liu, Z., & Pan, Y. (2024). *Research of the Influence Factors of Housing Price — Take Singapore as an Example*. ICFTBA 2024.
+   - Key finding: Flat model and lease commence date are collinear (r=0.999) — drop one
+   - MLR R² = 0.674 with 4 clean features (floor area, flat type, storey, remaining lease)
 
-3. CatBoost documentation — Ordered Target Encoding: https://catboost.ai/docs/concepts/algorithm-main-stages_cat-to-numberic
-
-4. Singapore Housing Development Board — Resale Flat Prices: https://data.gov.sg/collections/189/view
-
----
-
-## 📝 License
-
-MIT License — free to use, modify, and distribute with attribution.
+3. Prokhorenkova, L. et al. (2018). *CatBoost: unbiased boosting with categorical features*. NeurIPS 2018.
+   - The paper describing CatBoost's ordered encoding — the core of our winning approach
 
 ---
 
-*Built with ❤️ for the Kaggle Regression Challenge (HDB Price)*  
-*Final Score: **21,615.51 RMSE — 1st Place** 🥇*
+*Built for the Kaggle Regression Challenge (HDB Resale Price Prediction)*  
+*Public Leaderboard: 2nd Place — 21,471.62 RMSE*
