@@ -79,30 +79,40 @@ The 77 columns covered six types of information:
 ### The Score Progression
 
 ```
+         Phase 2          Phase 3   Phase 4   Phases 5-7       Phases 8-9
+         LGB+XGB          CatBoost  Ensemble  CB Tuning        CB+LGB Blend
+         ────────────     ────────  ────────  ─────────────    ────────────
 22,500 ┤
-       │  V1    V2    V3    V4    V5    V6
-22,400 ┤  ●─────●─────●─────●─────●─────●
-       │                                   \
-22,300 ┤                                    ●  (V1 best: 22,309)
+       │  V1  V2  V3  V6
+22,400 ┤  ●───●───●───●  (V4, V5 similar)
+       │               \
+22,300 ┤                ●  V1 best: 22,309
        │
 22,200 ┤
-       │
 22,100 ┤
-       │
 22,000 ┤
-       │
 21,900 ┤
-       │                                         V7 CatBoost
-21,800 ┤                                         ●
-       │                                          \
-21,700 ┤                                           \  V8
-       │                                            ●
-21,600 ┤                                             \  V11
-       │                                              ●
-21,500 ┤                                               \  V12  Blend
-       │                                                ●──────●
-21,400 ┤                                                    Group 9 ●
+       │                     V7 CatBoost ← BREAKTHROUGH (+694 pts)
+21,800 ┤                     ●
+       │                      \
+21,700 ┤                       \  V8 seed ensemble
+       │                        ●
+21,600 ┤                         \
+       │                          \  V11 region features (+116 pts)
+21,500 ┤                           ●
+       │                            \  V12 school names (+5 pts)
+       │                             ●  V13 stratified folds (+5 pts)
+21,471 ┤                              ●────── V11+V12 blend (+23 pts)
+       │                                       \
+       │                          V14 CB+LGB    \
+21,430 ┤                                         ●  V14+V11 blend (+41 pts) ← BEST
+       │                                     Group 9 ●  21,413
+21,413 ┤                                             │
        │
+       └─────────────────────────────────────────────────────────────────▶
+                                                                  Submissions
+
+Total improvement: 22,309 → 21,430 = 879 points (↓3.9% RMSE)
 ```
 
 ---
@@ -350,50 +360,7 @@ V11 (fixed):    best_iter = 11,303  ← stopped at right time ✅
 
 **LB Score**: 21,499 — improvement of 116 points over V8 equivalent.
 
----
-
-### Phase 6 — School Prestige Features (V12)
-
-**The real-world insight**: Singapore has a strict 1km priority rule for primary school registration. Families pay a premium to live within 1km of prestigious schools (GEP schools, SAP schools). This is a well-known property market phenomenon locally.
-
-**What we added**:
-
-- `pri_sch_name` and `sec_sch_name` as raw CatBoost categoricals (177 + 134 schools)
-- `school_prestige` tier (1–5) based on MOE GEP/SAP rankings from Skoolopedia
-- `prestige_in_1km`: school tier × within-1km flag
-- Non-linear transforms: `floor_area²`, `storey²`, `remaining_lease²`
-- 5 seeds instead of 3 (50 total models)
-
-**Price premium discovered**:
-
-```
-Near Pei Hwa Presbyterian (Tier 5 GEP school): avg $790,503
-Near non-prestigious school:                    avg $446,000
-Premium:                                        +$344,503 (+77%)
-```
-
-**Result**: LB 21,494 — only 5 points better than V11. The school signals were already partially captured by `address`, `town`, and `planning_area`.
-
----
-
-### Phase 7 — Blending (Final)
-
-**The simple idea**: Average the predictions from V11 and V12. Where the two models disagree, the truth often lies between them.
-
-```
-522 rows where V11 and V12 disagreed by >$5,000:
-  Example: Flat ID 58743
-  V11 predicted: $879,168
-  V12 predicted: $913,714
-  Blend (50/50): $896,441  ← splits the difference
-```
-
-**Result**: blend_50_50 scored **21,471** — the biggest single jump since V7:
-
-- From V12 (21,494) to blend (21,471): **−23 points**
-- Achieved **2nd place** on the public leaderboard
-
----
+- ***
 
 ## 🔑 Key Turning Points
 
