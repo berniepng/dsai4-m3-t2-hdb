@@ -172,6 +172,7 @@ V8: 3 seeds × 10 folds = 30 models         → LB: 21,538
 Three new feature families derived from Singapore HDB domain knowledge:
 
 **MOP (Minimum Occupation Period) features:**
+
 ```python
 mop_just_passed = 1 if hdb_age ∈ [5, 8]   # fresh MOP = motivated seller pool
 is_mop_window   = 1 if hdb_age ∈ [5, 10]  # broader MOP market effect
@@ -179,12 +180,14 @@ years_past_mop  = (hdb_age - 5).clip(0)   # market stabilisation after MOP
 ```
 
 **Era-relative flat size** — a 1990s 4-room flat (avg 100 sqm) vs a 2010s 4-room flat (avg 90 sqm) are different products despite the same flat type:
+
 ```python
 area_vs_era     = floor_area - median(floor_area | flat_type, decade_built)
 area_vs_era_pct = area_vs_era / cohort_median
 ```
 
 **Cooling measure windows** — 5 ABSD/LTV tightening dates (Dec 2011, Jan 2013, Jun 2013, Jul 2018, Dec 2021):
+
 ```python
 mths_2011_12 = months elapsed since Dec 2011 cooling (clipped to 0 before date)
 months_since_last_cooling = min(all non-zero cooling month values)
@@ -197,6 +200,7 @@ months_since_last_cooling = min(all non-zero cooling month values)
 ### V16 — Planning Area Maturity + School Demand
 
 **Planning tier** (1–5 scale based on HDB official mature estate classification):
+
 ```python
 PLANNING_TIER = {
     'CENTRAL AREA': 5, 'QUEENSTOWN': 5, 'BISHAN': 5,  # prime central
@@ -206,9 +210,11 @@ PLANNING_TIER = {
 }
 pt_x_flattype = planning_tier × flat_type_enc  # interaction term
 ```
+
 r = +0.283 — confirmed by academic literature on mature estate premiums.
 
 **School oversubscription** (MOE Phase 2C ballot data):
+
 ```python
 OVERSUBSCRIPTION = {
     'Nanyang Primary School': 5,  # always ballots Phase 2C
@@ -219,7 +225,7 @@ oversub_in_1km    = oversubscription × (pri_sch_nearest_distance ≤ 1000m)
 is_top_school_1km = 1 if oversub ≥ 4 AND dist ≤ 1km
 ```
 
-**Why this works**: Singapore's P1 registration gives priority to children within 1km. Parents *specifically* purchase flats to fall within the catchment — creating a documented, legally-consequential demand signal. Unlike secondary schools (no registration advantage by distance), primary schools create a genuine price cliff at 1km.
+**Why this works**: Singapore's P1 registration gives priority to children within 1km. Parents _specifically_ purchase flats to fall within the catchment — creating a documented, legally-consequential demand signal. Unlike secondary schools (no registration advantage by distance), primary schools create a genuine price cliff at 1km.
 
 **LB: blend_v16_v11_5_5 → 21,394** (new team best at the time)
 
@@ -245,18 +251,17 @@ block_quality = pct_premium − pct_economy − pct_rental   # r = +0.578
 **Why these are timeless signals**: Block composition is fixed at construction — how many 3-room vs 5-room flats a block has never changes. A premium block (high `pct_premium`) commands a consistent price premium regardless of the transaction year. These features are valid in 2012, 2021, and 2026.
 
 **What was skipped (tested, confirmed weak)**:
+
 - `pct_standard` (4-room only): r=+0.014 — 4-room is the benchmark, tells you nothing
 - `pct_studio`: r=+0.026 — too rare (n=1,408)
 - `year_completed`: r=0.999 corr with `lease_commence_date` — fully redundant
-
-**V22 CB OOF: ~21,300 — established as model ceiling**
-**blend_v22_v11_5_5 LB: ~21,383**
 
 ---
 
 ### V23 — Room Prestige Tier (Marginal)
 
 Added 3-tier room prestige encoding to reduce MULTI-GENERATION (n=77) outlier noise:
+
 ```python
 ROOM_PRESTIGE = {
     '5 ROOM': 3, 'EXECUTIVE': 3,   # premium tier
@@ -275,17 +280,18 @@ ROOM_PRESTIGE = {
 
 Systematic pilot testing framework: Seed 42, 5 CB folds + 3 LGB folds (~45 min per pilot), kill/go decision vs V22 5-fold mean of 21,214.
 
-| Version | Hypothesis | CB 5-fold result | Decision |
-|---|---|---|---|
-| V24 | Separate LGB feature matrix (no prestige cols) | 21,461 all seeds | ❌ KILL |
-| V25 | Neighbourhood price memory (rolling 6m median) | Leakage: 3,258 RMSE | ❌ KILL (leakage) |
-| V26 | Town × MRT bin categorical + planning×log_mrt | 21,517 | ❌ KILL |
-| V27 | Bus×MRT interchange interaction + precinct pavilion | 21,517 (bus pct=23.3%, too broad) | ❌ KILL |
-| V28 | K-Means spatial clusters (K=50, K=100) + cross-cat | Fold 1: +576⚠️, systematic regression | ❌ KILL |
-| V29 | month_sin/cos + haversine CBD distance | Running (CPU, no GPU) | Pending |
-| Huber | Huber:delta=10,000 loss (wrong scale — log-space) | 23,043 Fold 1 | ❌ KILL |
+| Version | Hypothesis                                          | CB 5-fold result                      | Decision          |
+| ------- | --------------------------------------------------- | ------------------------------------- | ----------------- |
+| V24     | Separate LGB feature matrix (no prestige cols)      | 21,461 all seeds                      | ❌ KILL           |
+| V25     | Neighbourhood price memory (rolling 6m median)      | Leakage: 3,258 RMSE                   | ❌ KILL (leakage) |
+| V26     | Town × MRT bin categorical + planning×log_mrt       | 21,517                                | ❌ KILL           |
+| V27     | Bus×MRT interchange interaction + precinct pavilion | 21,517 (bus pct=23.3%, too broad)     | ❌ KILL           |
+| V28     | K-Means spatial clusters (K=50, K=100) + cross-cat  | Fold 1: +576⚠️, systematic regression | ❌ KILL           |
+| V29     | month_sin/cos + haversine CBD distance              | Running (CPU, no GPU)                 | Pending           |
+| Huber   | Huber:delta=10,000 loss (wrong scale — log-space)   | 23,043 Fold 1                         | ❌ KILL           |
 
 **Root cause diagnosis**: CatBoost at depth=9 with 50 models already extracts maximum signal from available features. Every addition since V22 was either:
+
 1. Redundant with what CatBoost computes internally (room prestige → already in `flat_type` ordered encoding)
 2. Creating fold-level noise from sparse joint categoricals (K-Means, town×MRT)
 3. Applied at the wrong scale (Huber delta in dollar space vs log-transformed target)
@@ -299,6 +305,7 @@ Systematic pilot testing framework: Seed 42, 5 CB folds + 3 LGB folds (~45 min p
 ### What the Teammate Built
 
 A two-stage Random Forest meta-model with distinct feature engineering:
+
 - K-Means spatial clusters (K=50, K=100) on (lat, lon, floor_area, mid_storey)
 - `planning_area × flat_type` cross-category mean encoding
 - Inverse distance features (1/mrt_dist, 1/mall_dist, 1/hawker_dist)
@@ -308,12 +315,12 @@ Meta-RF standalone OOF: **23,964** — terrible alone. But its errors were uncor
 
 ### The Blending Experiment
 
-| V23+V11 weight | Meta-RF weight | LB Score |
-|---|---|---|
-| 100% | 0% | 21,384 |
-| 85% | 15% | 21,331 |
-| **70%** | **30%** | **21,312 ✅ optimum** |
-| 60% | 40% | 21,349 |
+| V23+V11 weight | Meta-RF weight | LB Score              |
+| -------------- | -------------- | --------------------- |
+| 100%           | 0%             | 21,384                |
+| 85%            | 15%            | 21,331                |
+| **70%**        | **30%**        | **21,312 ✅ optimum** |
+| 60%            | 40%            | 21,349                |
 
 **The parabola bottomed at 70/30.** Each 15% shift from 100/0 toward 70/30 gained ~20 LB points. Going more aggressive past 70/30 started hurting.
 
@@ -335,11 +342,11 @@ valuable than a slightly better version of the same model.
 
 In the final hour, two teams jumped from 2nd to 2nd/3rd with last-minute submissions. Final standings:
 
-| # | Team | Score |
-|---|---|---|
-| 1 | Group 9 | 21,225 |
-| 2 | Team8_DS4 | 21,282 |
-| 3 | DSAI4 Team 5 | 21,292 |
+| #     | Team            | Score      |
+| ----- | --------------- | ---------- |
+| 1     | Group 9         | 21,225     |
+| 2     | Team8_DS4       | 21,282     |
+| 3     | DSAI4 Team 5    | 21,292     |
 | **4** | **Team 2 (us)** | **21,313** |
 
 Gap to 1st: 88 points. Likely explained by Group 9 having a clean implementation of neighbourhood price memory (rolling local market momentum) — the one signal we identified but couldn't implement without leakage.
@@ -348,28 +355,33 @@ Gap to 1st: 88 points. Likely explained by Group 9 having a clean implementation
 
 ## 💡 Key Turning Points
 
-*(Preserving original Phase 2–9 turning points + new additions)*
+_(Preserving original Phase 2–9 turning points + new additions)_
 
 ### 1. CatBoost Replaced LGB/XGB (Phase 3)
+
 Single biggest jump: 694 points. Native ordered encoding eliminated the leakage problem.
 
 ### 2. Block Composition Discovery (Phase 10, V22)
+
 Block unit type counts (pct_premium, block_quality r=+0.578) were in the dataset throughout the competition but never engineered into ratio features until V22. Earlier discovery would have been worth 2–3 weeks of competition time.
 
 ### 3. Kill/Go Pilot Framework
+
 Reducing from 10-fold to 5-fold pilots (Seed 42 only) saved ~80 hours of GPU/CPU time across 7 failed experiments. The framework: if CB Seed 42 OOF > threshold after 5 folds → kill. Never run a full version on a failing hypothesis.
 
 ### 4. Meta-RF Ensemble Insight (Phase 11)
+
 A teammate's Random Forest with r=23,964 standalone gained 71 LB points at 30% weight. This taught the competition's most important lesson: ensemble diversity beats individual model quality.
 
 ### 5. Simple Blends Beat Complex Features
+
 Adding school prestige features (hours of work) gained 5 LB points. Blending two existing submissions (minutes of work) gained 23 LB points. Always try the simple thing first.
 
 ---
 
 ## 🔬 Feature Engineering Deep Dive
 
-*(Original sections preserved)*
+_(Original sections preserved)_
 
 ### The Core Formula: Why log1p(price)?
 
@@ -389,70 +401,70 @@ RMSE on log-prices penalises proportional errors equally — a $20K error on a $
 
 ### Original Dataset Features (20)
 
-| Feature | Description |
-|---|---|
-| `floor_area_sqm` | Floor area in square metres (r=+0.69) |
-| `mid_storey` | Mid-point of storey range (r=+0.36) |
-| `max_floor_lvl` | Maximum floor level of block |
-| `hdb_age` | Age of flat at transaction |
-| `lease_commence_date` | Year lease started |
-| `total_dwelling_units` | Total units in block |
-| `Latitude`, `Longitude` | GPS coordinates |
-| `mrt_nearest_distance` | Distance to nearest MRT (metres) |
-| `Mall_Nearest_Distance` | Distance to nearest mall |
-| `Hawker_Nearest_Distance` | Distance to nearest hawker centre |
-| `pri_sch_nearest_distance` | Distance to nearest primary school |
-| `Tranc_Year`, `Tranc_Month` | Transaction date |
-| `1room_sold` to `exec_sold` | Block unit type counts (raw) |
-| `1room_rental` to `3room_rental` | Rental unit counts (raw) |
-| `mrt_interchange`, `bus_interchange` | Interchange station binary flags |
-| `Mall_Within_1km`, `Mall_Within_2km` | Mall count thresholds |
-| `Hawker_Within_1km`, `Hawker_Within_2km` | Hawker count thresholds |
-| `cutoff_point`, `affiliation` | Secondary school quality signals |
+| Feature                                  | Description                           |
+| ---------------------------------------- | ------------------------------------- |
+| `floor_area_sqm`                         | Floor area in square metres (r=+0.69) |
+| `mid_storey`                             | Mid-point of storey range (r=+0.36)   |
+| `max_floor_lvl`                          | Maximum floor level of block          |
+| `hdb_age`                                | Age of flat at transaction            |
+| `lease_commence_date`                    | Year lease started                    |
+| `total_dwelling_units`                   | Total units in block                  |
+| `Latitude`, `Longitude`                  | GPS coordinates                       |
+| `mrt_nearest_distance`                   | Distance to nearest MRT (metres)      |
+| `Mall_Nearest_Distance`                  | Distance to nearest mall              |
+| `Hawker_Nearest_Distance`                | Distance to nearest hawker centre     |
+| `pri_sch_nearest_distance`               | Distance to nearest primary school    |
+| `Tranc_Year`, `Tranc_Month`              | Transaction date                      |
+| `1room_sold` to `exec_sold`              | Block unit type counts (raw)          |
+| `1room_rental` to `3room_rental`         | Rental unit counts (raw)              |
+| `mrt_interchange`, `bus_interchange`     | Interchange station binary flags      |
+| `Mall_Within_1km`, `Mall_Within_2km`     | Mall count thresholds                 |
+| `Hawker_Within_1km`, `Hawker_Within_2km` | Hawker count thresholds               |
+| `cutoff_point`, `affiliation`            | Secondary school quality signals      |
 
 ### Derived Features (62)
 
-| Feature | Formula | Rationale |
-|---|---|---|
-| `remaining_lease` | `99 - (Tranc_Year - lease_commence_date)` | CPF eligibility cliff at 70 years |
-| `remaining_lease_sq` | `remaining_lease²` | Non-linear lease value decay |
-| `floor_area_sq` | `floor_area_sqm²` | Super-linear area premium |
-| `storey_ratio` | `mid_storey / (max_floor_lvl + 1)` | Relative height in building |
-| `time_index` | `(Tranc_Year-2012)×12 + Tranc_Month` | Linear market time |
-| `area_x_storey` | `floor_area × mid_storey` | High floor + large flat interaction |
-| `sqm_per_room` | `floor_area / n_rooms` | Space quality per room |
-| `dist_cbd` | `√((lat-1.2837)²+(lon-103.8517)²)×111` | CBD proximity in km |
-| `log_mrt_dist` | `log1p(mrt_nearest_distance)` | Diminishing MRT proximity returns |
-| `region` | District → CCR/RCR/OCR | Singapore market zone |
-| `region_x_flattype` | `region + "_" + flat_type` | Zone × room type |
-| `region_x_town` | `region + "_" + town` | Zone × town |
-| `planning_tier` | Town → 1–5 tier map | Mature estate premium |
-| `is_mature_estate` | HDB official classification | Binary mature flag |
-| `pt_x_flattype` | `planning_tier × flat_type_enc` | Tier × room interaction |
-| `oversubscription` | MOE Phase 2C ballot 0–5 score | School demand signal |
-| `oversub_in_1km` | `oversubscription × (pri_dist ≤ 1km)` | Legal P1 registration cliff |
-| `is_top_school_1km` | `1 if oversub ≥ 4 AND dist ≤ 1km` | Elite catchment binary |
-| `mop_just_passed` | `1 if hdb_age ∈ [5, 8]` | Fresh MOP seller pool |
-| `is_mop_window` | `1 if hdb_age ∈ [5, 10]` | Broader MOP effect |
-| `years_past_mop` | `(hdb_age - 5).clip(0)` | Post-MOP stabilisation |
-| `area_vs_era` | `floor_area - cohort_median(flat_type, decade)` | Large vs small for its era |
-| `area_vs_era_pct` | `area_vs_era / cohort_median` | Proportional era comparison |
-| `storey_vs_era` | `mid_storey - cohort_median(flat_type, decade)` | Floor level vs era norm |
-| `mths_2011_12` to `mths_2021_12` (×5) | Months since each cooling date | Post-ABSD suppression |
-| `months_since_last_cooling` | `min(non-zero cooling months)` | Distilled cooling signal |
-| `pct_premium` | `(5room_sold + exec_sold) / total_units` | Block design quality: r=+0.521 |
-| `pct_economy` | `(1+2+3room_sold) / total_units` | Economy concentration: r=−0.504 |
-| `pct_rental` | `total_rental / total_units` | Social composition signal |
-| `has_rental` | `1 if any rental units` | Binary stigma flag: r=−0.178 |
-| `has_commercial` | `1 if commercial == 'Y'` | Older block signal: r=−0.140 |
-| `block_quality` | `pct_premium − pct_economy − pct_rental` | Composite: r=+0.578 |
-| `amenity_score` | `1/(mrt/1000+0.1) + 1/(mall/1000+0.1) + 1/(school/1000+0.1)` | Combined convenience |
-| `decade_built` | `(lease_commence_date // 10) × 10` | Build era for cohort lookup |
-| `postal_district` | First 2 digits of postal code | District location |
-| `postal_sector` | First 3 digits of postal code | Sub-district location |
-| `room_prestige` | `MULTI-GEN/1-3 ROOM=1, 4 ROOM=2, 5 ROOM/EXEC=3` | Tier signal cleaner than linear flat_type_enc — V23 addition |
-| `is_premium_flat` | `1 if flat_type in {5 ROOM, EXECUTIVE}` | Binary premium flag — V23 addition |
-| `premium_x_blockquality` | `is_premium_flat × block_quality` | Premium flat in premium block joint signal — V23 addition |
+| Feature                               | Formula                                                      | Rationale                                                    |
+| ------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `remaining_lease`                     | `99 - (Tranc_Year - lease_commence_date)`                    | CPF eligibility cliff at 70 years                            |
+| `remaining_lease_sq`                  | `remaining_lease²`                                           | Non-linear lease value decay                                 |
+| `floor_area_sq`                       | `floor_area_sqm²`                                            | Super-linear area premium                                    |
+| `storey_ratio`                        | `mid_storey / (max_floor_lvl + 1)`                           | Relative height in building                                  |
+| `time_index`                          | `(Tranc_Year-2012)×12 + Tranc_Month`                         | Linear market time                                           |
+| `area_x_storey`                       | `floor_area × mid_storey`                                    | High floor + large flat interaction                          |
+| `sqm_per_room`                        | `floor_area / n_rooms`                                       | Space quality per room                                       |
+| `dist_cbd`                            | `√((lat-1.2837)²+(lon-103.8517)²)×111`                       | CBD proximity in km                                          |
+| `log_mrt_dist`                        | `log1p(mrt_nearest_distance)`                                | Diminishing MRT proximity returns                            |
+| `region`                              | District → CCR/RCR/OCR                                       | Singapore market zone                                        |
+| `region_x_flattype`                   | `region + "_" + flat_type`                                   | Zone × room type                                             |
+| `region_x_town`                       | `region + "_" + town`                                        | Zone × town                                                  |
+| `planning_tier`                       | Town → 1–5 tier map                                          | Mature estate premium                                        |
+| `is_mature_estate`                    | HDB official classification                                  | Binary mature flag                                           |
+| `pt_x_flattype`                       | `planning_tier × flat_type_enc`                              | Tier × room interaction                                      |
+| `oversubscription`                    | MOE Phase 2C ballot 0–5 score                                | School demand signal                                         |
+| `oversub_in_1km`                      | `oversubscription × (pri_dist ≤ 1km)`                        | Legal P1 registration cliff                                  |
+| `is_top_school_1km`                   | `1 if oversub ≥ 4 AND dist ≤ 1km`                            | Elite catchment binary                                       |
+| `mop_just_passed`                     | `1 if hdb_age ∈ [5, 8]`                                      | Fresh MOP seller pool                                        |
+| `is_mop_window`                       | `1 if hdb_age ∈ [5, 10]`                                     | Broader MOP effect                                           |
+| `years_past_mop`                      | `(hdb_age - 5).clip(0)`                                      | Post-MOP stabilisation                                       |
+| `area_vs_era`                         | `floor_area - cohort_median(flat_type, decade)`              | Large vs small for its era                                   |
+| `area_vs_era_pct`                     | `area_vs_era / cohort_median`                                | Proportional era comparison                                  |
+| `storey_vs_era`                       | `mid_storey - cohort_median(flat_type, decade)`              | Floor level vs era norm                                      |
+| `mths_2011_12` to `mths_2021_12` (×5) | Months since each cooling date                               | Post-ABSD suppression                                        |
+| `months_since_last_cooling`           | `min(non-zero cooling months)`                               | Distilled cooling signal                                     |
+| `pct_premium`                         | `(5room_sold + exec_sold) / total_units`                     | Block design quality: r=+0.521                               |
+| `pct_economy`                         | `(1+2+3room_sold) / total_units`                             | Economy concentration: r=−0.504                              |
+| `pct_rental`                          | `total_rental / total_units`                                 | Social composition signal                                    |
+| `has_rental`                          | `1 if any rental units`                                      | Binary stigma flag: r=−0.178                                 |
+| `has_commercial`                      | `1 if commercial == 'Y'`                                     | Older block signal: r=−0.140                                 |
+| `block_quality`                       | `pct_premium − pct_economy − pct_rental`                     | Composite: r=+0.578                                          |
+| `amenity_score`                       | `1/(mrt/1000+0.1) + 1/(mall/1000+0.1) + 1/(school/1000+0.1)` | Combined convenience                                         |
+| `decade_built`                        | `(lease_commence_date // 10) × 10`                           | Build era for cohort lookup                                  |
+| `postal_district`                     | First 2 digits of postal code                                | District location                                            |
+| `postal_sector`                       | First 3 digits of postal code                                | Sub-district location                                        |
+| `room_prestige`                       | `MULTI-GEN/1-3 ROOM=1, 4 ROOM=2, 5 ROOM/EXEC=3`              | Tier signal cleaner than linear flat_type_enc — V23 addition |
+| `is_premium_flat`                     | `1 if flat_type in {5 ROOM, EXECUTIVE}`                      | Binary premium flag — V23 addition                           |
+| `premium_x_blockquality`              | `is_premium_flat × block_quality`                            | Premium flat in premium block joint signal — V23 addition    |
 
 **Categoricals (12)**: `town`, `flat_type`, `flat_model`, `planning_area`, `mrt_name`, `full_flat_type`, `address`, `region`, `region_x_flattype`, `region_x_town`, `pri_sch_name`, `sec_sch_name`
 
@@ -460,29 +472,29 @@ RMSE on log-prices penalises proportional errors equally — a $20K error on a $
 
 ## 🎯 Domain Knowledge Ranked by Signal
 
-| Rank | Domain Signal | Correlation | Source |
-|---|---|---|---|
-| 1 | **Block quality composite** | r=+0.578 | Block unit type counts — fixed at construction |
-| 2 | **Flat type / room count** | r=+0.70 | HDB flat classification |
-| 3 | **Floor area** | r=+0.69 | Physical measurement |
-| 4 | **Premium unit ratio** | r=+0.521 | 5-room + executive concentration per block |
-| 5 | **Economy unit ratio** | r=−0.504 | 1-3 room concentration per block |
-| 6 | **Planning area maturity** | r=+0.283 | HDB official mature estate classification |
-| 7 | **School oversubscription** | r=+0.186 | MOE Phase 2C ballot history |
-| 8 | **Remaining lease** | r=+0.35 | CPF withdrawal eligibility rules |
-| 9 | **Rental block stigma** | r=−0.178 | Binary flag stronger than percentage |
-| 10 | **Commercial ground floor** | r=−0.140 | Older block design era |
-| 11 | **MOP timing** | qualitative | 5-year minimum occupation period cliff |
-| 12 | **Cooling measures** | qualitative | 5 ABSD/LTV tightening dates 2011–2021 |
-| 13 | **Era-relative flat size** | qualitative | 1990s 4-room ≠ 2010s 4-room in sqm |
-| 14 | **CCR/RCR/OCR zones** | qualitative | URA property market segmentation |
-| 15 | **Cultural floor numbers** | qualitative | Floor 4=unlucky, floor 8=lucky (Chinese) |
+| Rank | Domain Signal               | Correlation | Source                                         |
+| ---- | --------------------------- | ----------- | ---------------------------------------------- |
+| 1    | **Block quality composite** | r=+0.578    | Block unit type counts — fixed at construction |
+| 2    | **Flat type / room count**  | r=+0.70     | HDB flat classification                        |
+| 3    | **Floor area**              | r=+0.69     | Physical measurement                           |
+| 4    | **Premium unit ratio**      | r=+0.521    | 5-room + executive concentration per block     |
+| 5    | **Economy unit ratio**      | r=−0.504    | 1-3 room concentration per block               |
+| 6    | **Planning area maturity**  | r=+0.283    | HDB official mature estate classification      |
+| 7    | **School oversubscription** | r=+0.186    | MOE Phase 2C ballot history                    |
+| 8    | **Remaining lease**         | r=+0.35     | CPF withdrawal eligibility rules               |
+| 9    | **Rental block stigma**     | r=−0.178    | Binary flag stronger than percentage           |
+| 10   | **Commercial ground floor** | r=−0.140    | Older block design era                         |
+| 11   | **MOP timing**              | qualitative | 5-year minimum occupation period cliff         |
+| 12   | **Cooling measures**        | qualitative | 5 ABSD/LTV tightening dates 2011–2021          |
+| 13   | **Era-relative flat size**  | qualitative | 1990s 4-room ≠ 2010s 4-room in sqm             |
+| 14   | **CCR/RCR/OCR zones**       | qualitative | URA property market segmentation               |
+| 15   | **Cultural floor numbers**  | qualitative | Floor 4=unlucky, floor 8=lucky (Chinese)       |
 
 ---
 
 ## 🧠 Why CatBoost Beat Everything Else
 
-*(Original section preserved)*
+_(Original section preserved)_
 
 CatBoost's **ordered target encoding** computes categorical statistics using only transactions that appear earlier in a randomly-ordered dataset — preventing the future-data leakage that plagued LightGBM's OOF mean encoding.
 
@@ -500,7 +512,7 @@ For a dataset with 12 categorical features (town, flat_type, address, school nam
 
 ## ⚠️ Challenges and How We Managed Them
 
-*(Preserving original + new challenges)*
+_(Preserving original + new challenges)_
 
 ### Original Challenges (Phases 1–9)
 
@@ -515,6 +527,7 @@ For a dataset with 12 categorical features (town, flat_type, address, school nam
 **Challenge: V25 Leakage in neighbourhood price memory**
 
 Two bugs combined caused 3,258 RMSE (near-perfect = obvious leakage):
+
 1. `hood_price_ratio = resale_price / hood_med_6m` — directly encodes the target as a feature
 2. Global fallback median computed from full source_df including current rows
 
@@ -578,7 +591,7 @@ Raw test_preds `.npy` arrays had 16,737 rows (2 extra). Positional slicing to 16
 
 ## 🚀 What We Would Do With No Constraints
 
-*(Original section preserved)*
+_(Original section preserved)_
 
 ### 1. External Data Sources
 
@@ -628,22 +641,22 @@ This learns optimal blend weights from data rather than fixing them manually —
 
 ## 📈 Final Leaderboard History
 
-| Version | Model | Key Change | LB Score | Notes |
-|---|---|---|---|---|
-| V1 | LGB+XGB | Baseline, global encoding | 22,309 | |
-| V7 | CatBoost | Native encoding — breakthrough | 21,615 | +694 pts |
-| V8 | CatBoost | 3-seed ensemble | 21,538 | |
-| V11 | CatBoost | Region CCR/RCR/OCR features | 21,499 | |
-| V12 | CatBoost | School name categoricals | 21,494 | |
-| blend_v11_v12 | CB+CB | 50/50 blend | 21,471 | |
-| blend_v14_v11 | CB+LGB+CB | Highest diversity | 21,430 | Phase 9 best |
-| blend_v16_v11 | V16+V11 | Planning tier + school demand | 21,394 | |
-| **blend_v23_v11_fixed** | **V23+V11** | **+ Block composition** | **21,383** | **Personal best** |
-| sub13 (85/15) | V23+V11 + meta-RF | First meta-RF attempt | 21,331 | Teammate |
-| **70/30 meta-RF** | **V23+V11 + meta-RF** | **Optimum blend** | **21,312** | **Team best** |
-| sub21 (60/40) | V23+V11 + meta-RF | Too aggressive | 21,349 | Past optimum |
-| Various pilots | V24–V29 | Feature experiments | regressed | All killed |
-| **FINAL** | **Team 2** | **4th place** | **21,313** | |
+| Version                 | Model                 | Key Change                     | LB Score   | Notes             |
+| ----------------------- | --------------------- | ------------------------------ | ---------- | ----------------- |
+| V1                      | LGB+XGB               | Baseline, global encoding      | 22,309     |                   |
+| V7                      | CatBoost              | Native encoding — breakthrough | 21,615     | +694 pts          |
+| V8                      | CatBoost              | 3-seed ensemble                | 21,538     |                   |
+| V11                     | CatBoost              | Region CCR/RCR/OCR features    | 21,499     |                   |
+| V12                     | CatBoost              | School name categoricals       | 21,494     |                   |
+| blend_v11_v12           | CB+CB                 | 50/50 blend                    | 21,471     |                   |
+| blend_v14_v11           | CB+LGB+CB             | Highest diversity              | 21,430     | Phase 9 best      |
+| blend_v16_v11           | V16+V11               | Planning tier + school demand  | 21,394     |                   |
+| **blend_v23_v11_fixed** | **V23+V11**           | **+ Block composition**        | **21,383** | **Personal best** |
+| sub13 (85/15)           | V23+V11 + meta-RF     | First meta-RF attempt          | 21,331     | Teammate          |
+| **70/30 meta-RF**       | **V23+V11 + meta-RF** | **Optimum blend**              | **21,312** | **Team best**     |
+| sub21 (60/40)           | V23+V11 + meta-RF     | Too aggressive                 | 21,349     | Past optimum      |
+| Various pilots          | V24–V29               | Feature experiments            | regressed  | All killed        |
+| **FINAL**               | **Team 2**            | **4th place**                  | **21,313** |                   |
 
 ---
 
@@ -676,11 +689,11 @@ pip install catboost lightgbm scikit-learn pandas numpy
 
 ### Expected Runtime
 
-| Environment | V23 Full Run |
-|---|---|
-| Kaggle GPU T4 | ~8–9 hours (80 models: 50 CB + 30 LGB) |
-| Kaggle CPU (no GPU) | ~35–40 hours |
-| Pilot (5-fold, Seed 42 only) | ~45 min GPU / ~3–4 hrs CPU |
+| Environment                  | V23 Full Run                           |
+| ---------------------------- | -------------------------------------- |
+| Kaggle GPU T4                | ~8–9 hours (80 models: 50 CB + 30 LGB) |
+| Kaggle CPU (no GPU)          | ~35–40 hours                           |
+| Pilot (5-fold, Seed 42 only) | ~45 min GPU / ~3–4 hrs CPU             |
 
 ---
 
