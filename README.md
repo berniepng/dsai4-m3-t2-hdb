@@ -10,6 +10,8 @@
 
 ---
 
+![HDB Resale Price Prediction Cover Art](_img/hdb-challenge-art.png)
+
 ## 📋 Table of Contents
 
 1. [What We Were Trying to Do](#what-we-were-trying-to-do)
