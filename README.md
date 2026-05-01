@@ -19,7 +19,7 @@
 5. [Phase 11 — Meta-RF Ensemble Breakthrough](#phase-11--meta-rf-ensemble-breakthrough)
 6. [Key Turning Points](#key-turning-points)
 7. [Feature Engineering Deep Dive](#feature-engineering-deep-dive)
-8. [Final Feature List (V22 — Winning Base Model)](#final-feature-list-v22--winning-base-model)
+8. [Final Feature List (V23 — Winning Base Model)](#final-feature-list-v23--winning-base-model)
 9. [Domain Knowledge Ranked by Signal](#domain-knowledge-ranked-by-signal)
 10. [Why CatBoost Beat Everything Else](#why-catboost-beat-everything-else)
 11. [Challenges and How We Managed Them](#challenges-and-how-we-managed-them)
@@ -382,7 +382,10 @@ RMSE on log-prices penalises proportional errors equally — a $20K error on a $
 
 ---
 
-## 📋 Final Feature List (V22 — Winning Base Model)
+## 📋 Final Feature List (V23 — Winning Base Model)
+
+> V23 is the final base model used in `blend_v23_v11_5_5_fixed` (LB 21,383) and the 70/30 meta-RF blend (LB 21,312).
+> V23 = V22 (80 features: V16 base + 6 block composition) + 3 room prestige features = **82 features total** (70 numeric + 12 categorical).
 
 ### Original Dataset Features (20)
 
@@ -447,6 +450,9 @@ RMSE on log-prices penalises proportional errors equally — a $20K error on a $
 | `decade_built` | `(lease_commence_date // 10) × 10` | Build era for cohort lookup |
 | `postal_district` | First 2 digits of postal code | District location |
 | `postal_sector` | First 3 digits of postal code | Sub-district location |
+| `room_prestige` | `MULTI-GEN/1-3 ROOM=1, 4 ROOM=2, 5 ROOM/EXEC=3` | Tier signal cleaner than linear flat_type_enc — V23 addition |
+| `is_premium_flat` | `1 if flat_type in {5 ROOM, EXECUTIVE}` | Binary premium flag — V23 addition |
+| `premium_x_blockquality` | `is_premium_flat × block_quality` | Premium flat in premium block joint signal — V23 addition |
 
 **Categoricals (12)**: `town`, `flat_type`, `flat_model`, `planning_area`, `mrt_name`, `full_flat_type`, `address`, `region`, `region_x_flattype`, `region_x_town`, `pri_sch_name`, `sec_sch_name`
 
@@ -653,11 +659,11 @@ pip install catboost lightgbm scikit-learn pandas numpy
 
 1. Upload `train.csv`, `test.csv`, `sample_sub_reg.csv` to Kaggle dataset
 2. Create new Kaggle notebook, set accelerator: **GPU T4**
-3. Paste `kaggle_catboost_lgb_v22.py`, update `BASE_PATH`
+3. Paste `kaggle_catboost_lgb_v23.py`, update `BASE_PATH`
 4. **Save Version → Save & Run All (Commit)**
-5. Download: `submission_kaggle_v22.csv`, all `oof_*.npy` arrays
-6. Blend with V11: `(V22_predictions + V11_predictions) / 2`
-7. Submit `blend_v22_v11_5_5_fixed.csv`
+5. Download: `submission_kaggle_v23.csv`, all `oof_*.npy` arrays
+6. Blend with V11: `(V23_predictions + V11_predictions) / 2`
+7. Submit `blend_v23_v11_5_5_fixed.csv`
 
 ### Reproduce the Team Best (21,312)
 
@@ -670,7 +676,7 @@ pip install catboost lightgbm scikit-learn pandas numpy
 
 ### Expected Runtime
 
-| Environment | V22 Full Run |
+| Environment | V23 Full Run |
 |---|---|
 | Kaggle GPU T4 | ~8–9 hours (80 models: 50 CB + 30 LGB) |
 | Kaggle CPU (no GPU) | ~35–40 hours |
