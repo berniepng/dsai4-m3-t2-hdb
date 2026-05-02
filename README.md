@@ -21,18 +21,18 @@
 4. [Phase 10 — Block Composition & Feature Ceiling (V22–V29)](#phase-10--block-composition--feature-ceiling-v22v29)
 5. [Phase 11 — Meta-RF Ensemble Breakthrough](#phase-11--meta-rf-ensemble-breakthrough)
 6. [Phase 12 — Pseudo-Stacking Pipeline & Private LB Result](#phase-12--pseudo-stacking-pipeline--private-lb-result)
-6. [Key Turning Points](#key-turning-points)
-7. [Feature Engineering Deep Dive](#feature-engineering-deep-dive)
-8. [Final Feature List (V23 — Winning Base Model)](#final-feature-list-v23--winning-base-model)
-9. [Domain Knowledge Ranked by Signal](#domain-knowledge-ranked-by-signal)
-10. [Why CatBoost Beat Everything Else](#why-catboost-beat-everything-else)
-11. [Challenges and How We Managed Them](#challenges-and-how-we-managed-them)
-12. [Model Limitations](#model-limitations)
-13. [Key Learnings](#key-learnings)
-14. [What We Would Do With No Constraints](#what-we-would-do-with-no-constraints)
-15. [Final Leaderboard History](#final-leaderboard-history)
-16. [How to Reproduce](#how-to-reproduce)
-17. [Academic References](#academic-references)
+7. [Key Turning Points](#key-turning-points)
+8. [Feature Engineering Deep Dive](#feature-engineering-deep-dive)
+9. [Final Feature List (V23 — Winning Base Model)](#final-feature-list-v23--winning-base-model)
+10. [Domain Knowledge Ranked by Signal](#domain-knowledge-ranked-by-signal)
+11. [Why CatBoost Beat Everything Else](#why-catboost-beat-everything-else)
+12. [Challenges and How We Managed Them](#challenges-and-how-we-managed-them)
+13. [Model Limitations](#model-limitations)
+14. [Key Learnings](#key-learnings)
+15. [What We Would Do With No Constraints](#what-we-would-do-with-no-constraints)
+16. [Final Leaderboard History](#final-leaderboard-history)
+17. [How to Reproduce](#how-to-reproduce)
+18. [Academic References](#academic-references)
 
 ---
 
@@ -370,13 +370,13 @@ The `submission_FINAL_CALIBRATED.csv` — built from the pseudo-stacking noteboo
 
 ### Final Private Leaderboard (Official Result)
 
-| #     | Team            | Public LB | Private LB     | Movement |
-| ----- | --------------- | --------- | -------------- | -------- |
-| 1     | DSAI4 Team 5   | 21,292    | **21,147**     | ↑ +1     |
-| 2     | Group 9         | 21,225    | **21,174**     | ↓ −1     |
-| **3** | **Team 2 (us)** | 21,313    | **21,198** ✅  | **↑ +1** |
-| 4     | Team 3          | —         | 21,257         | —        |
-| 5     | Team8_DS4       | 21,282    | 21,296         | ↓ −3     |
+| #     | Team            | Public LB | Private LB    | Movement |
+| ----- | --------------- | --------- | ------------- | -------- |
+| 1     | DSAI4 Team 5    | 21,292    | **21,147**    | ↑ +1     |
+| 2     | Group 9         | 21,225    | **21,174**    | ↓ −1     |
+| **3** | **Team 2 (us)** | 21,313    | **21,198** ✅ | **↑ +1** |
+| 4     | Team 3          | —         | 21,257        | —        |
+| 5     | Team8_DS4       | 21,282    | 21,296        | ↓ −3     |
 
 > The private LB uses ~70% of test rows not seen during the competition. A model that generalises well — rather than overfitting to the public LB's 30% sample — moves up. Team 2's jump from 4th to 3rd confirms the pseudo-stacking approach was genuinely better, not just lucky on the public sample.
 
@@ -405,6 +405,7 @@ The `submission_FINAL_CALIBRATED.csv` — built from the pseudo-stacking noteboo
 ### Key Engineering Decisions
 
 **Top feature family — spatial K-Means clusters:**
+
 ```python
 # K=50  on (Latitude, Longitude, floor_area_sqm)           — coarse neighbourhoods
 # K=100 on (Latitude, Longitude, floor_area_sqm, floor_mid) — micro-locations
@@ -412,6 +413,7 @@ The `submission_FINAL_CALIBRATED.csv` — built from the pseudo-stacking noteboo
 ```
 
 **Strongest signal — cross-category OOF mean-price encodings:**
+
 ```python
 ENCODE_GROUPS = [
     ["planning_area", "flat_type"],   # top signal
@@ -425,6 +427,7 @@ ENCODE_GROUPS = [
 ```
 
 **V23 calibration before injecting into meta-RF:**
+
 ```python
 # Linear rescaling aligns V23 predictions to OOF base RF distribution
 # Prevents meta-RF from treating V23's scale as outliers
@@ -435,19 +438,19 @@ v23_calibrated = (v23_aligned - v23_mean) * (oof_std / v23_std) + oof_mean
 
 ### What Did NOT Work (Documented in Notebook)
 
-| Approach | Why It Failed |
-|---|---|
-| Raw address-level encoding | val RMSE 22K → Kaggle **36K** (severe overfit) |
+| Approach                           | Why It Failed                                          |
+| ---------------------------------- | ------------------------------------------------------ |
+| Raw address-level encoding         | val RMSE 22K → Kaggle **36K** (severe overfit)         |
 | Bayesian-smoothed address encoding | Over-regularised — signal absorbed by K-Means clusters |
-| KNN ensemble member | OOF 38K — too weak |
-| Ridge regression | OOF 39K — insufficient for non-linear price surface |
+| KNN ensemble member                | OOF 38K — too weak                                     |
+| Ridge regression                   | OOF 39K — insufficient for non-linear price surface    |
 
 ### Stage Results Summary
 
-| Stage | Description | RMSE |
-|---|---|---|
-| Stage 1 Base RF | 5-fold OOF RandomForest | 23,964 |
-| Stage 2 Meta RF | + base_pred_feature | 23,792 (val hold-out) |
+| Stage                 | Description               | RMSE                       |
+| --------------------- | ------------------------- | -------------------------- |
+| Stage 1 Base RF       | 5-fold OOF RandomForest   | 23,964                     |
+| Stage 2 Meta RF       | + base_pred_feature       | 23,792 (val hold-out)      |
 | **Final 70/30 blend** | 70% V23+V11 + 30% meta-RF | **21,197 (private LB)** ✅ |
 
 ### Module Constraint
@@ -746,23 +749,23 @@ This learns optimal blend weights from data rather than fixing them manually —
 
 ## 📈 Final Leaderboard History
 
-| Version                 | Model                     | Key Change                          | Public LB  | Private LB | Notes              |
-| ----------------------- | ------------------------- | ----------------------------------- | ---------- | ---------- | ------------------ |
-| V1                      | LGB+XGB                   | Baseline, global encoding           | 22,309     | —          |                    |
-| V7                      | CatBoost                  | Native encoding — breakthrough      | 21,615     | —          | +694 pts           |
-| V8                      | CatBoost                  | 3-seed ensemble                     | 21,538     | —          |                    |
-| V11                     | CatBoost                  | Region CCR/RCR/OCR features         | 21,499     | —          |                    |
-| V12                     | CatBoost                  | School name categoricals            | 21,494     | —          |                    |
-| blend_v11_v12           | CB+CB                     | 50/50 blend                         | 21,471     | —          |                    |
-| blend_v14_v11           | CB+LGB+CB                 | Highest diversity                   | 21,430     | —          | Phase 9 best       |
-| blend_v16_v11           | V16+V11                   | Planning tier + school demand       | 21,394     | —          |                    |
-| **blend_v23_v11_fixed** | **V23+V11**               | **+ Block composition**             | **21,383** | —          | **Personal best**  |
-| sub13 (85/15)           | V23+V11 + meta-RF         | First meta-RF attempt               | 21,331     | —          | Teammate           |
-| **70/30 meta-RF**       | **V23+V11 + meta-RF**     | **Optimum blend**                   | **21,312** | —          | **Public LB best** |
-| sub21 (60/40)           | V23+V11 + meta-RF         | Too aggressive                      | 21,349     | —          | Past optimum       |
-| Various pilots          | V24–V29                   | Feature experiments                 | regressed  | —          | All killed         |
-| Public LB close         | Team 2                    | 4th place at competition close      | **21,313** | —          |                    |
-| **FINAL_CALIBRATED**    | **Pseudo-stack meta-RF**  | **V23 + 2-stage RF (Phase 12)**     | 21,312     | **21,198** | **3rd place 🏆**   |
+| Version                 | Model                    | Key Change                      | Public LB  | Private LB | Notes              |
+| ----------------------- | ------------------------ | ------------------------------- | ---------- | ---------- | ------------------ |
+| V1                      | LGB+XGB                  | Baseline, global encoding       | 22,309     | —          |                    |
+| V7                      | CatBoost                 | Native encoding — breakthrough  | 21,615     | —          | +694 pts           |
+| V8                      | CatBoost                 | 3-seed ensemble                 | 21,538     | —          |                    |
+| V11                     | CatBoost                 | Region CCR/RCR/OCR features     | 21,499     | —          |                    |
+| V12                     | CatBoost                 | School name categoricals        | 21,494     | —          |                    |
+| blend_v11_v12           | CB+CB                    | 50/50 blend                     | 21,471     | —          |                    |
+| blend_v14_v11           | CB+LGB+CB                | Highest diversity               | 21,430     | —          | Phase 9 best       |
+| blend_v16_v11           | V16+V11                  | Planning tier + school demand   | 21,394     | —          |                    |
+| **blend_v23_v11_fixed** | **V23+V11**              | **+ Block composition**         | **21,383** | —          | **Personal best**  |
+| sub13 (85/15)           | V23+V11 + meta-RF        | First meta-RF attempt           | 21,331     | —          | Teammate           |
+| **70/30 meta-RF**       | **V23+V11 + meta-RF**    | **Optimum blend**               | **21,312** | —          | **Public LB best** |
+| sub21 (60/40)           | V23+V11 + meta-RF        | Too aggressive                  | 21,349     | —          | Past optimum       |
+| Various pilots          | V24–V29                  | Feature experiments             | regressed  | —          | All killed         |
+| Public LB close         | Team 2                   | 4th place at competition close  | **21,313** | —          |                    |
+| **FINAL_CALIBRATED**    | **Pseudo-stack meta-RF** | **V23 + 2-stage RF (Phase 12)** | 21,312     | **21,198** | **3rd place 🏆**   |
 
 ---
 
@@ -778,21 +781,21 @@ pip install catboost lightgbm scikit-learn pandas numpy
 
 1. Upload `train.csv`, `test.csv`, `sample_sub_reg.csv` to Kaggle dataset
 2. Create new Kaggle notebook, set accelerator: **GPU T4**
-3. Paste `kaggle_catboost_lgb_v23.py`, update `BASE_PATH`
+3. Paste [`kaggle_catboost_lgb_v23.py`](notebooks/kaggle_catboost_lgb_v23.py), update `BASE_PATH`
 4. **Save Version → Save & Run All (Commit)**
 5. Download: `submission_kaggle_v23.csv`, all `oof_*.npy` arrays
-6. Blend with V11: `(V23_predictions + V11_predictions) / 2`
-7. Submit `blend_v23_v11_5_5_fixed.csv`
+6. Blend with [V11](submissions/submission_kaggle_v11_c_region.csv): `(V23_predictions + V11_predictions) / 2`
+7. Submit [`blend_v23_v11_5_5_fixed.csv`](submissions/blend_v23_v11_5_5_fixed.csv)
 
 ### Reproduce the Team Best (21,312 public / 21,197 private)
 
 1. Run step 1–5 above for V23
 2. Upload `blend_v23_v11_5_5_fixed.csv` as a private Kaggle dataset named `hdb-v23-baseline`
-3. Run `HDB_Price_Regression_21307.ipynb` (Kamlesh's pseudo-stacking notebook)
+3. Run [`HDB_Price_Regression_21307.ipynb`](notebooks/HDB_Price_Regression_21307.ipynb) (Kamlesh's pseudo-stacking notebook)
    - Stage 1: 5-fold OOF RandomForest base model
    - Stage 2: Meta-RF with `base_pred_feature` = OOF base (train) / calibrated V23 (test)
    - Final blend: `0.70 × v23_aligned + 0.30 × meta_test_pred`
-4. Submit `submission_meta_v23_blend_70_30.csv` (or `submission_FINAL_CALIBRATED.csv`)
+4. Submit [`submission_meta_v23_blend_70_30.csv`](submissions/submission_meta_v23_blend_70_30.csv) (or [`submission_FINAL_CALIBRATED.csv`](submissions/submission_FINAL_CALIBRATED.csv))
 5. Align by Id: `sample[['Id']].merge(sub_all, on='Id', how='left')` — critical
 
 ### Expected Runtime
