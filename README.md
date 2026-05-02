@@ -3,10 +3,11 @@
 > **Competition**: Regression Challenge (HDB Resale Price Prediction)  
 > **Metric**: RMSE (Root Mean Squared Error) — lower is better  
 > **Team**: TEAM 2  
-> **Final Score**: 21,312.99869 (4th Place — Final Leaderboard)  
+> **Public LB Score**: 21,312.99869 (4th Place during competition)  
+> **Private LB Score**: 21,197.85621 (**3rd Place — Final Official Result**)  
 > **Best Personal Score**: 21,383 (blend_v23_v11_5_5_fixed)  
-> **Best Team Score**: 21,312 (70% blend_V23_V11 + 30% meta-RF ensemble)  
-> **Model**: CatBoost + LightGBM hybrid ensemble with native categorical encoding + meta-RF stacking
+> **Best Team Score**: 21,197 (pseudo-stacking meta-RF pipeline — private LB)  
+> **Model**: CatBoost + LightGBM hybrid ensemble with native categorical encoding + pseudo-stacking meta-RF
 
 ---
 
@@ -19,6 +20,7 @@
 3. [Our Journey — Version by Version](#our-journey)
 4. [Phase 10 — Block Composition & Feature Ceiling (V22–V29)](#phase-10--block-composition--feature-ceiling-v22v29)
 5. [Phase 11 — Meta-RF Ensemble Breakthrough](#phase-11--meta-rf-ensemble-breakthrough)
+6. [Phase 12 — Pseudo-Stacking Pipeline & Private LB Result](#phase-12--pseudo-stacking-pipeline--private-lb-result)
 6. [Key Turning Points](#key-turning-points)
 7. [Feature Engineering Deep Dive](#feature-engineering-deep-dive)
 8. [Final Feature List (V23 — Winning Base Model)](#final-feature-list-v23--winning-base-model)
@@ -90,9 +92,9 @@ The 77 columns covered six types of information:
 ### The Full Score Progression
 
 ```
-         Phase 2          Phase 3   Phase 4   Phases 5-9       Phase 10     Phase 11
-         LGB+XGB          CatBoost  Ensemble  CB+LGB Blends    Block Comp   Meta-RF
-         ────────────     ────────  ────────  ─────────────    ──────────   ───────
+         Phase 2          Phase 3   Phase 4   Phases 5-9       Phase 10     Phase 11     Phase 12
+         LGB+XGB          CatBoost  Ensemble  CB+LGB Blends    Block Comp   Meta-RF      Pseudo-Stack
+         ────────────     ────────  ────────  ─────────────    ──────────   ───────      ────────────
 22,500 ┤
        │  V1  V2  V3  V6
 22,400 ┤  ●───●───●───●
@@ -113,11 +115,14 @@ The 77 columns covered six types of information:
        │
 21,383 ┤                                 V23+V11 blend ← personal best
        │
-21,312 ┤                                  70% V23+V11 + 30% meta-RF ← TEAM BEST
-       │                              Group 9 ● 21,225
+21,312 ┤                                  70% V23+V11 + 30% meta-RF ← public LB best
+       │
+21,197 ┤                                   pseudo-stack (private LB) ← FINAL OFFICIAL 3rd
+       │                              DSAI4 Team 5 ● 21,147 (1st)
        └─────────────────────────────────────────────────────────────────▶
 
-Total improvement: 22,309 → 21,312 = 997 points (↓4.5% RMSE)
+Public LB journey:  22,309 → 21,312 = 997 points (↓4.5% RMSE)
+Private LB result:  21,197 = 3rd place (moved up from 4th on public LB)
 ```
 
 ---
@@ -340,18 +345,114 @@ Key insight: An inaccurate but orthogonal model is more
 valuable than a slightly better version of the same model.
 ```
 
-### Final Team Score: 21,312 (4th Place)
+### Final Team Score: 21,312 (4th Place — Public LB)
 
-In the final hour, two teams jumped from 2nd to 2nd/3rd with last-minute submissions. Final standings:
+In the final hour, two teams jumped from 2nd to 2nd/3rd with last-minute submissions. Public LB standings at competition close:
 
-| #     | Team            | Score      |
+| #     | Team            | Public LB  |
 | ----- | --------------- | ---------- |
 | 1     | Group 9         | 21,225     |
 | 2     | Team8_DS4       | 21,282     |
 | 3     | DSAI4 Team 5    | 21,292     |
 | **4** | **Team 2 (us)** | **21,313** |
 
-Gap to 1st: 88 points. Likely explained by Group 9 having a clean implementation of neighbourhood price memory (rolling local market momentum) — the one signal we identified but couldn't implement without leakage.
+Gap to 1st: 88 points on the public LB. See Phase 12 for the private LB result.
+
+---
+
+## 🏆 Phase 12 — Pseudo-Stacking Pipeline & Private LB Result
+
+### What Changed After the Public LB Closed
+
+After the competition's public leaderboard closed, final standings were recalculated on the **private leaderboard** — the remaining 70% of test data held back throughout the competition. This is the official final result.
+
+The `submission_FINAL_CALIBRATED.csv` — built from the pseudo-stacking notebook (`HDB_Price_Regression_21307.ipynb`) — scored **21,197.85621 on the private LB**, moving Team 2 from **4th to 3rd place**.
+
+### Final Private Leaderboard (Official Result)
+
+| #     | Team            | Public LB | Private LB     | Movement |
+| ----- | --------------- | --------- | -------------- | -------- |
+| 1     | DSAI4 Team 5   | 21,292    | **21,147**     | ↑ +1     |
+| 2     | Group 9         | 21,225    | **21,174**     | ↓ −1     |
+| **3** | **Team 2 (us)** | 21,313    | **21,198** ✅  | **↑ +1** |
+| 4     | Team 3          | —         | 21,257         | —        |
+| 5     | Team8_DS4       | 21,282    | 21,296         | ↓ −3     |
+
+> The private LB uses ~70% of test rows not seen during the competition. A model that generalises well — rather than overfitting to the public LB's 30% sample — moves up. Team 2's jump from 4th to 3rd confirms the pseudo-stacking approach was genuinely better, not just lucky on the public sample.
+
+### The Pseudo-Stacking Pipeline
+
+**Author**: Kamlesh Kangya (`HDB_Price_Regression_21307.ipynb`)  
+**Approach**: Two-stage Random Forest meta-model using the V23 blend as a calibrated input feature.
+
+```
+[Train data] ──> Feature Engineering ──> 5-fold OOF Mean-Price Encodings
+                                               │
+                                               ▼
+                                  Stage 1: 5-fold OOF RandomForest (Base)
+                                  OOF RMSE: 23,964
+                                               │
+                                               ▼
+                                  Stage 2: Meta-RF
+                                  Input: raw features + base_pred_feature
+                                  (test rows: calibrated V23 as base_pred_feature)
+                                               │
+                                               ▼
+                          FINAL = 0.70 × blend_v23_v11 + 0.30 × meta_RF_test
+                          Public LB: 21,312  ·  Private LB: 21,197
+```
+
+### Key Engineering Decisions
+
+**Top feature family — spatial K-Means clusters:**
+```python
+# K=50  on (Latitude, Longitude, floor_area_sqm)           — coarse neighbourhoods
+# K=100 on (Latitude, Longitude, floor_area_sqm, floor_mid) — micro-locations
+# Fitted on train+test combined (unsupervised — zero leakage)
+```
+
+**Strongest signal — cross-category OOF mean-price encodings:**
+```python
+ENCODE_GROUPS = [
+    ["planning_area", "flat_type"],   # top signal
+    ["cluster_k50",   "flat_type"],   # spatial × flat type
+    ["cluster_k100",  "flat_type"],
+    ["town",          "flat_type"],
+    ["town",          "Tranc_Year"],  # temporal × location
+    ["planning_area", "Tranc_Year"],
+    # + 12 more 1-way and 2-way combinations, including P75 encodings
+]
+```
+
+**V23 calibration before injecting into meta-RF:**
+```python
+# Linear rescaling aligns V23 predictions to OOF base RF distribution
+# Prevents meta-RF from treating V23's scale as outliers
+v23_calibrated = (v23_aligned - v23_mean) * (oof_std / v23_std) + oof_mean
+```
+
+**Additional features:** Haversine CBD distance, cyclical month (sin/cos), inverse distances (1/mrt, 1/mall, 1/hawker, 1/school), storey buckets (low/mid/high/vhigh), area × floor, area × lease interactions.
+
+### What Did NOT Work (Documented in Notebook)
+
+| Approach | Why It Failed |
+|---|---|
+| Raw address-level encoding | val RMSE 22K → Kaggle **36K** (severe overfit) |
+| Bayesian-smoothed address encoding | Over-regularised — signal absorbed by K-Means clusters |
+| KNN ensemble member | OOF 38K — too weak |
+| Ridge regression | OOF 39K — insufficient for non-linear price surface |
+
+### Stage Results Summary
+
+| Stage | Description | RMSE |
+|---|---|---|
+| Stage 1 Base RF | 5-fold OOF RandomForest | 23,964 |
+| Stage 2 Meta RF | + base_pred_feature | 23,792 (val hold-out) |
+| **Final 70/30 blend** | 70% V23+V11 + 30% meta-RF | **21,197 (private LB)** ✅ |
+
+### Module Constraint
+
+The notebook was built entirely within **Module 3.5** constraints (K-Means / Random Forest / Linear-Ridge). No gradient boosting was used in the notebook itself — the CatBoost signal entered only via the pre-computed `blend_v23_v11_5_5_fixed.csv` baseline input.
 
 ---
 
@@ -589,6 +690,8 @@ Raw test_preds `.npy` arrays had 16,737 rows (2 extra). Positional slicing to 16
 
 12. **Submission alignment**: Never use positional slicing on `.npy` arrays. Always `sample[['Id']].merge(sub_all, on='Id', how='left')`.
 
+13. **Public LB is not the final word**: Team 2 ranked 4th on the public LB (21,313) but 3rd on the private LB (21,197). The pseudo-stacking pipeline generalised better to the unseen 70% of test data, confirming it was a genuinely stronger model rather than a lucky overfitting on the public 30% sample. Always prioritise approaches with theoretical reasons to generalise over approaches optimised purely on public LB feedback.
+
 ---
 
 ## 🚀 What We Would Do With No Constraints
@@ -643,22 +746,23 @@ This learns optimal blend weights from data rather than fixing them manually —
 
 ## 📈 Final Leaderboard History
 
-| Version                 | Model                 | Key Change                     | LB Score   | Notes             |
-| ----------------------- | --------------------- | ------------------------------ | ---------- | ----------------- |
-| V1                      | LGB+XGB               | Baseline, global encoding      | 22,309     |                   |
-| V7                      | CatBoost              | Native encoding — breakthrough | 21,615     | +694 pts          |
-| V8                      | CatBoost              | 3-seed ensemble                | 21,538     |                   |
-| V11                     | CatBoost              | Region CCR/RCR/OCR features    | 21,499     |                   |
-| V12                     | CatBoost              | School name categoricals       | 21,494     |                   |
-| blend_v11_v12           | CB+CB                 | 50/50 blend                    | 21,471     |                   |
-| blend_v14_v11           | CB+LGB+CB             | Highest diversity              | 21,430     | Phase 9 best      |
-| blend_v16_v11           | V16+V11               | Planning tier + school demand  | 21,394     |                   |
-| **blend_v23_v11_fixed** | **V23+V11**           | **+ Block composition**        | **21,383** | **Personal best** |
-| sub13 (85/15)           | V23+V11 + meta-RF     | First meta-RF attempt          | 21,331     | Teammate          |
-| **70/30 meta-RF**       | **V23+V11 + meta-RF** | **Optimum blend**              | **21,312** | **Team best**     |
-| sub21 (60/40)           | V23+V11 + meta-RF     | Too aggressive                 | 21,349     | Past optimum      |
-| Various pilots          | V24–V29               | Feature experiments            | regressed  | All killed        |
-| **FINAL**               | **Team 2**            | **4th place**                  | **21,313** |                   |
+| Version                 | Model                     | Key Change                          | Public LB  | Private LB | Notes              |
+| ----------------------- | ------------------------- | ----------------------------------- | ---------- | ---------- | ------------------ |
+| V1                      | LGB+XGB                   | Baseline, global encoding           | 22,309     | —          |                    |
+| V7                      | CatBoost                  | Native encoding — breakthrough      | 21,615     | —          | +694 pts           |
+| V8                      | CatBoost                  | 3-seed ensemble                     | 21,538     | —          |                    |
+| V11                     | CatBoost                  | Region CCR/RCR/OCR features         | 21,499     | —          |                    |
+| V12                     | CatBoost                  | School name categoricals            | 21,494     | —          |                    |
+| blend_v11_v12           | CB+CB                     | 50/50 blend                         | 21,471     | —          |                    |
+| blend_v14_v11           | CB+LGB+CB                 | Highest diversity                   | 21,430     | —          | Phase 9 best       |
+| blend_v16_v11           | V16+V11                   | Planning tier + school demand       | 21,394     | —          |                    |
+| **blend_v23_v11_fixed** | **V23+V11**               | **+ Block composition**             | **21,383** | —          | **Personal best**  |
+| sub13 (85/15)           | V23+V11 + meta-RF         | First meta-RF attempt               | 21,331     | —          | Teammate           |
+| **70/30 meta-RF**       | **V23+V11 + meta-RF**     | **Optimum blend**                   | **21,312** | —          | **Public LB best** |
+| sub21 (60/40)           | V23+V11 + meta-RF         | Too aggressive                      | 21,349     | —          | Past optimum       |
+| Various pilots          | V24–V29                   | Feature experiments                 | regressed  | —          | All killed         |
+| Public LB close         | Team 2                    | 4th place at competition close      | **21,313** | —          |                    |
+| **FINAL_CALIBRATED**    | **Pseudo-stack meta-RF**  | **V23 + 2-stage RF (Phase 12)**     | 21,312     | **21,198** | **3rd place 🏆**   |
 
 ---
 
@@ -680,14 +784,16 @@ pip install catboost lightgbm scikit-learn pandas numpy
 6. Blend with V11: `(V23_predictions + V11_predictions) / 2`
 7. Submit `blend_v23_v11_5_5_fixed.csv`
 
-### Reproduce the Team Best (21,312)
+### Reproduce the Team Best (21,312 public / 21,197 private)
 
-1. Run step 1–5 above for V22/V23
-2. Run teammate's meta-RF notebook (`HDB_Price_Regression_21312.ipynb`)
-   - Uses K-Means clusters, planning_area×flat_type cross-encoding, inverse distances
-3. Compute: `0.70 × blend_v23_v11 + 0.30 × meta_rf_predictions`
-4. Align by Id: `sample[['Id']].merge(sub_all, on='Id', how='left')` — critical
-5. Submit
+1. Run step 1–5 above for V23
+2. Upload `blend_v23_v11_5_5_fixed.csv` as a private Kaggle dataset named `hdb-v23-baseline`
+3. Run `HDB_Price_Regression_21307.ipynb` (Kamlesh's pseudo-stacking notebook)
+   - Stage 1: 5-fold OOF RandomForest base model
+   - Stage 2: Meta-RF with `base_pred_feature` = OOF base (train) / calibrated V23 (test)
+   - Final blend: `0.70 × v23_aligned + 0.30 × meta_test_pred`
+4. Submit `submission_meta_v23_blend_70_30.csv` (or `submission_FINAL_CALIBRATED.csv`)
+5. Align by Id: `sample[['Id']].merge(sub_all, on='Id', how='left')` — critical
 
 ### Expected Runtime
 
@@ -714,7 +820,8 @@ pip install catboost lightgbm scikit-learn pandas numpy
 ---
 
 _Built for the Kaggle Regression Challenge (HDB Resale Price Prediction)_  
-_Final Leaderboard: 4th Place — 21,312.99 RMSE_  
-_Personal best: blend_v23_v11_5_5_fixed — 21,383 RMSE_  
-_Team best: 70% blend_V23_V11 + 30% meta-RF — 21,312 RMSE_  
-_Total journey: 22,309 → 21,312 = 997 points improvement (↓4.5% RMSE)_
+_Public LB at close: 4th Place — 21,312.99 RMSE_  
+_**Private LB (official final): 3rd Place — 21,197.85 RMSE**_  
+_Personal best: blend_v23_v11_5_5_fixed — 21,383 RMSE (public)_  
+_Team best: pseudo-stack meta-RF — 21,197 RMSE (private LB)_  
+_Total journey: 22,309 → 21,197 = 1,112 points improvement (↓5.0% RMSE)_
