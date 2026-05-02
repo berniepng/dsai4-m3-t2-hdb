@@ -15,8 +15,8 @@
 
 ## 📋 Table of Contents
 
-1. [What We Were Trying to Do](#what-we-were-trying-to-do)
-2. [The Dataset](#the-dataset)
+1. [What We Were Trying to Do](#-what-we-were-trying-to-do)
+2. [The Dataset](#-the-dataset)
 3. [Our Journey — Version by Version](#our-journey)
 4. [Phase 10 — Block Composition & Feature Ceiling (V22–V29)](#phase-10--block-composition--feature-ceiling-v22v29)
 5. [Phase 11 — Meta-RF Ensemble Breakthrough](#phase-11--meta-rf-ensemble-breakthrough)
