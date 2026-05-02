@@ -382,7 +382,7 @@ The `submission_FINAL_CALIBRATED.csv` — built from the pseudo-stacking noteboo
 
 ### The Pseudo-Stacking Pipeline
 
-**Author**: Kamlesh Kangya (`HDB_Price_Regression_21307.ipynb`)  
+**Author**: [Kamlesh Kangya](https://github.com/kamleshkangya/hdb-price-regression) (`HDB_Price_Regression_21307.ipynb`)  
 **Approach**: Two-stage Random Forest meta-model using the V23 blend as a calibrated input feature.
 
 ```
