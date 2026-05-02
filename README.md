@@ -8,6 +8,7 @@
 > **Best Personal Score**: 21,383 (blend_v23_v11_5_5_fixed)  
 > **Best Team Score**: 21,197 (pseudo-stacking meta-RF pipeline — private LB)  
 > **Model**: CatBoost + LightGBM hybrid ensemble with native categorical encoding + pseudo-stacking meta-RF
+> **Team Members**: Bernie, Kamlesh, Jaya, Noel, Lily
 
 ---
 
