@@ -2,7 +2,7 @@
 
 > **Competition**: Regression Challenge (HDB Resale Price Prediction)  
 > **Metric**: RMSE (Root Mean Squared Error) — lower is better  
-> **Team**: TEAM 2 - Bernie, Kamlesh, Jaya, Noel, Lily, Shilpa
+> **Team**: TEAM 2 - Bernie, Kamlesh, Jaya, Noel, Lily, Shilpa  
 > **Public LB Score**: 21,312.99869 (4th Place during competition)  
 > **Private LB Score**: 21,197.85621 (**3rd Place — Final Official Result**)  
 > **Best Personal Score**: 21,383 (blend_v23_v11_5_5_fixed)  
