@@ -29,10 +29,11 @@
 12. [Challenges and How We Managed Them](#-challenges-and-how-we-managed-them)
 13. [Model Limitations](#-model-limitations)
 14. [Key Learnings](#-key-learnings)
-15. [What We Would Do With No Constraints](#-what-we-would-do-with-no-constraints)
-16. [Final Leaderboard History](#-final-leaderboard-history)
-17. [How to Reproduce](#-how-to-reproduce)
-18. [Academic References](#-academic-references)
+15. [Team Learnings and Resources](#team-learnings-and-resources)
+16. [What We Would Do With No Constraints](#-what-we-would-do-with-no-constraints)
+17. [Final Leaderboard History](#-final-leaderboard-history)
+18. [How to Reproduce](#-how-to-reproduce)
+19. [Academic References](#-academic-references)
 
 ---
 
@@ -694,6 +695,18 @@ Raw test_preds `.npy` arrays had 16,737 rows (2 extra). Positional slicing to 16
 12. **Submission alignment**: Never use positional slicing on `.npy` arrays. Always `sample[['Id']].merge(sub_all, on='Id', how='left')`.
 
 13. **Public LB is not the final word**: Team 2 ranked 4th on the public LB (21,313) but 3rd on the private LB (21,197). The pseudo-stacking pipeline generalised better to the unseen 70% of test data, confirming it was a genuinely stronger model rather than a lucky overfitting on the public 30% sample. Always prioritise approaches with theoretical reasons to generalise over approaches optimised purely on public LB feedback.
+
+---
+
+## Team Learnings and Resources
+
+| Member | Key Learnings | Notebooks | GitHub Repo |
+|--------|--------------|-----------|-------------|
+| **Bernie Png** | • CatBoost's native ordered encoding eliminates target-leakage by design — the single biggest unlock of the competition<br>• Block composition features (`block_quality` r=+0.578) were in the dataset all along — audit every column before feature engineering<br>• Feature ceiling is real: 7 pilots (V23–V29) all regressed once CatBoost depth=9 had extracted all available signal<br>• A weak but orthogonal model (meta-RF OOF 23,964) gained 71 LB pts at 30% blend weight — diversity beats accuracy in ensembles<br>• 5-fold kill/go pilot framework saved ~80 GPU hours across failed experiments | [`notebooks/bernie/kaggle_catboost_lgb_v22.py`](notebooks/bernie/kaggle_catboost_lgb_v22.py)<br>[`notebooks/bernie/kaggle_catboost_lgb_v23.py`](notebooks/bernie/kaggle_catboost_lgb_v23.py) | [github.com/berniepng/hdb-price-prediction](https://github.com/berniepng/hdb-price-prediction) |
+| **Kamlesh Kangya** | • Pseudo-stacking with a weak RF meta-model closed 71 public LB points simply by correcting systematic CatBoost errors — ensemble diversity matters more than individual model accuracy<br>• Cross-category OOF mean encodings (`planning_area × flat_type`, `cluster × flat_type`) were the top feature family — raw categoricals alone underperform cross-combinations<br>• K-Means spatial clusters (K=50, K=100) on (lat, lon, area, floor) captured micro-neighbourhood premiums that town-level features missed<br>• Raw address encoding caused catastrophic overfit (val 22K → LB 36K) — always validate encoding strategies before full runs<br>• Public LB is not the final word: the pseudo-stack ranked 4th on public but 3rd on private LB, confirming it generalised better | [`notebooks/kamlesh/HDB_Price_Regression_21307.ipynb`](notebooks/kamlesh/HDB_Price_Regression_21307.ipynb) | [github.com/kamleshkangya/hdb-price-prediction](https://github.com/kamleshkangya/hdb-price-prediction) |
+| **Jaya Easwaran** | • Location engineered three ways gave the biggest lift: CBD distance (Haversine), nearest of 7 major hospitals, and target-encoded town — location is the strongest non-size predictor in Singapore HDB<br>• Distance columns follow a cliff-edge (not linear) relationship with price — log1p transforms and binary proximity flags (within_500m, within_1km) capture the sharp dropoff far better than raw metres<br>• NMAR nulls in amenity columns must be filled with the 99th percentile (not mean) — a missing hawker count signals "none nearby", which is genuinely informative<br>• Scipy-optimised blend weights across LGB/XGB/CatBoost reliably reduced RMSE by 100–200 over the single best model<br>• Optuna tuning with too few trials (20/15/10) does not converge — 100+ trials per model needed for meaningful gains | [`notebooks/jaya/hdb_pipeline.py`](notebooks/jaya/hdb_pipeline.py)<br>[`notebooks/jaya/HDB_Key_Learnings.docx`](notebooks/jaya/HDB_Key_Learnings.docx) | _placeholder_ |
+| **Lily** | • Spatial proximity features (hawker/mall distances) must be recomputed from source coordinates using BallTree — pre-supplied columns had inconsistencies that would mislead the model<br>• `time_index` (normalised price index anchored to Woodlands-2012 baseline) consistently ranked top-5 in feature importance — a single scalar captures both temporal inflation and cross-town price differentials<br>• Simple P4 baseline (fixed hyperparams, 3-model blend) outperformed the advanced P3 pipeline (Optuna-tuned, interaction features, stacking) — added complexity redistributed importance without adding signal<br>• Stacking with Ridge or tree meta-learners collapsed to OOF 97K–119K, far worse than plain blending — stacking requires diverse, accurate base models to work<br>• CatBoost dominated the optimised blend (weight 0.61) confirming native categorical encoding gives it a systematic edge on this dataset | [`notebooks/lily/lily_hdb_analysis_p4.ipynb`](notebooks/lily/lily_hdb_analysis_p4.ipynb)<br>[`notebooks/lily/key_learnings.ipynb`](notebooks/lily/key_learnings.ipynb) | _placeholder_ |
+| **Noel** | • Modular pipeline architecture (separate `hdb_features_engine.py` and `hdb_inference_engine.py`) enforces a strict feature contract between training and inference — prevents silent feature mismatch bugs that are common when notebooks grow large<br>• CatBoost's 5-fold ensemble loaded from saved `.cbm` model files allows inference to be fully decoupled from training — models can be reused without retraining<br>• Temporal validation (filtering train rows to 2019+) provides a more realistic estimate of out-of-sample performance than random KFold splits on time-series data<br>• Physical interaction features (`floor_area × mid_storey`, `lease × floor_area`, `storey_ratio`) encode the joint premium of large-high-floor flats more effectively than individual raw columns<br>• Log1p-transforming the target (`resale_price`) and reversing with `expm1` on predictions reduced sensitivity to expensive outlier flats during training | [`notebooks/noel/notebook5b07e139e1.ipynb`](notebooks/noel/notebook5b07e139e1.ipynb)<br>[`notebooks/noel/notebook3e39e687f8.ipynb`](notebooks/noel/notebook3e39e687f8.ipynb)<br>[`notebooks/noel/hdb_features_engine.py`](notebooks/noel/hdb_features_engine.py)<br>[`notebooks/noel/hdb_inference_engine.py`](notebooks/noel/hdb_inference_engine.py) | _placeholder_ |
 
 ---
 
